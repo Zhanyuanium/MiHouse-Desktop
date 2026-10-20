@@ -1,3 +1,4 @@
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -9,6 +10,7 @@ namespace MiHouse.App.Views;
 public sealed partial class DevicesPage : Page
 {
     private bool _isActionDialogOpen;
+    private InputActivationListener? _activationListener;
 
     public DevicesPage(DevicesViewModel viewModel)
     {
@@ -16,6 +18,7 @@ public sealed partial class DevicesPage : Page
         ViewModel = viewModel;
         DataContext = viewModel;
         ((Microsoft.UI.Xaml.Data.CollectionViewSource)Resources["GroupedDevices"]).Source = viewModel.Rooms;
+        ScenesContent.DataContext = viewModel.ScenePanel;
     }
 
     public DevicesViewModel ViewModel { get; }
@@ -23,16 +26,53 @@ public sealed partial class DevicesPage : Page
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         ViewModel.ConfirmAction = ConfirmActionAsync;
+        ViewModel.ConfirmScene = ConfirmSceneAsync;
+        ViewModel.ScenePanel.SetHome(ViewModel.SelectedHome?.Home);
+        if (XamlRoot is not null)
+        {
+            _activationListener = InputActivationListener.GetForWindowId(XamlRoot.ContentIslandEnvironment.AppWindowId);
+            _activationListener.InputActivationChanged += OnInputActivationChanged;
+            ViewModel.SetPollingActive(_activationListener.State == InputActivationState.Activated);
+        }
+
         await ViewModel.RefreshCommand.ExecuteAsync(null);
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         ViewModel.ConfirmAction = null;
+        ViewModel.ConfirmScene = null;
+        if (_activationListener is not null)
+        {
+            _activationListener.InputActivationChanged -= OnInputActivationChanged;
+            _activationListener = null;
+        }
+
+        ScenesFlyout.Hide();
         ViewModel.Stop();
     }
 
-    private async Task<bool> ConfirmActionAsync(ActionRowViewModel action, CancellationToken token)
+    private Task<bool> ConfirmActionAsync(ActionRowViewModel action, CancellationToken token) =>
+        ShowConfirmationAsync(action.Name, action.ConfirmationMessage, token);
+
+    private async Task<bool> ConfirmSceneAsync(SceneRowViewModel scene, CancellationToken token)
+    {
+        HomeRowViewModel? home = ViewModel.SelectedHome;
+        ScenesFlyout.Hide();
+        try
+        {
+            return await ShowConfirmationAsync(scene.Name, $"确定要执行「{scene.Name}」吗？", token);
+        }
+        finally
+        {
+            if (!token.IsCancellationRequested && IsLoaded && ReferenceEquals(home, ViewModel.SelectedHome))
+            {
+                ScenesFlyout.ShowAt(ScenesButton);
+            }
+        }
+    }
+
+    private async Task<bool> ShowConfirmationAsync(string title, string message, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
         if (!IsLoaded || XamlRoot is null)
@@ -48,8 +88,8 @@ public sealed partial class DevicesPage : Page
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = action.Name,
-            Content = new TextBlock { Text = action.ConfirmationMessage, TextWrapping = TextWrapping.Wrap },
+            Title = title,
+            Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
             PrimaryButtonText = "执行",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close
@@ -68,6 +108,30 @@ public sealed partial class DevicesPage : Page
         }
     }
 
+    private async void OnScenesOpened(object sender, object e)
+    {
+        ViewModel.ScenePanel.SetHome(ViewModel.SelectedHome?.Home);
+        await ViewModel.ScenePanel.LoadCommand.ExecuteAsync(null);
+    }
+
+    private void OnInputActivationChanged(InputActivationListener sender, InputActivationListenerActivationChangedEventArgs args)
+    {
+        if (DispatcherQueue.HasThreadAccess)
+        {
+            ViewModel.SetPollingActive(IsLoaded && sender.State == InputActivationState.Activated);
+        }
+        else
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (IsLoaded && ReferenceEquals(sender, _activationListener))
+                {
+                    ViewModel.SetPollingActive(sender.State == InputActivationState.Activated);
+                }
+            });
+        }
+    }
+
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
     {
         DetailsSplitView.DisplayMode = e.NewSize.Width < 880 ? SplitViewDisplayMode.Overlay : SplitViewDisplayMode.Inline;
@@ -76,6 +140,11 @@ public sealed partial class DevicesPage : Page
 
     private void OnPaneOpened(SplitView sender, object args)
     {
+        if (IsLoaded && _activationListener is not null)
+        {
+            ViewModel.SetPollingActive(_activationListener.State == InputActivationState.Activated);
+        }
+
         if (sender.DisplayMode == SplitViewDisplayMode.Overlay)
         {
             DispatcherQueue.TryEnqueue(() =>
@@ -91,7 +160,7 @@ public sealed partial class DevicesPage : Page
 
     private void OnPaneClosed(SplitView sender, object args)
     {
-        if (sender.DisplayMode == SplitViewDisplayMode.Overlay && !sender.IsPaneOpen && ViewModel.HasSelection)
+        if (!sender.IsPaneOpen && ViewModel.HasSelection)
         {
             ViewModel.CloseDetailsCommand.Execute(null);
         }

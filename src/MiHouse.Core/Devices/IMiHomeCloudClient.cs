@@ -54,4 +54,21 @@ public interface IMiHomeCloudClient
         MiActionKey action,
         IReadOnlyList<JsonElement> input,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns the manual scenes of one home. Shared homes are queried with their owner uid.
+    /// </summary>
+    Task<IReadOnlyList<MiScene>> GetScenesAsync(
+        MiHomeSession session,
+        MiHome home,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Runs a manual scene. Success is the top-level cloud code; the payload carries no result.
+    /// </summary>
+    Task RunSceneAsync(
+        MiHomeSession session,
+        MiHome home,
+        string sceneId,
+        CancellationToken cancellationToken);
 }

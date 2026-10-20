@@ -305,6 +305,19 @@ public sealed class DeviceControllerTests
             CancellationToken cancellationToken)
             => throw new NotSupportedException();
 
+        public Task<IReadOnlyList<MiScene>> GetScenesAsync(
+            MiHomeSession session,
+            MiHome home,
+            CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task RunSceneAsync(
+            MiHomeSession session,
+            MiHome home,
+            string sceneId,
+            CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
         public Task<IReadOnlyList<MiPropertyValue>> GetPropertiesAsync(
             MiHomeSession session,
             string did,

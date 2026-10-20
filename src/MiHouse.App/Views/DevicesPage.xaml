@@ -65,6 +65,80 @@
         <Button Command="{Binding RefreshCommand}" AutomationProperties.Name="刷新设备列表" ToolTipService.ToolTip="刷新设备列表">
           <FontIcon Glyph="&#xE72C;" FontSize="16" />
         </Button>
+        <Button x:Name="ScenesButton" Content="场景" IsEnabled="{Binding HasSelectedHome}" AutomationProperties.Name="查看当前家庭的手动场景">
+          <Button.Flyout>
+            <Flyout x:Name="ScenesFlyout" Opened="OnScenesOpened" Placement="Bottom">
+              <Grid x:Name="ScenesContent" Width="320" MaxHeight="480" RowSpacing="12">
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid ColumnSpacing="16">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Text="{Binding HomeName}" Style="{ThemeResource BodyStrongTextBlockStyle}"
+                    TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                  <Button Grid.Column="1" Content="刷新" Command="{Binding RefreshCommand}"
+                    Style="{StaticResource QuietButtonStyle}" AutomationProperties.Name="刷新当前家庭的手动场景" />
+                </Grid>
+                <InfoBar Grid.Row="1" IsOpen="{Binding Error, Converter={StaticResource HasTextConverter}}"
+                  Severity="Error" IsClosable="False" Title="无法加载场景" Message="{Binding Error}" AutomationProperties.LiveSetting="Polite">
+                  <InfoBar.ActionButton>
+                    <Button Content="重试" Command="{Binding RefreshCommand}" AutomationProperties.Name="重新加载手动场景" />
+                  </InfoBar.ActionButton>
+                </InfoBar>
+                <TextBlock Grid.Row="2" Text="{Binding Notice}" Style="{StaticResource SecondaryTextStyle}" AutomationProperties.LiveSetting="Polite" />
+                <Grid Grid.Row="3" MinHeight="120" MaxHeight="320">
+                  <ListView ItemsSource="{Binding Scenes}" SelectionMode="None" IsItemClickEnabled="False"
+                    HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="手动场景">
+                    <ListView.ItemContainerStyle>
+                      <Style TargetType="ListViewItem">
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="Margin" Value="0" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Background" Value="Transparent" />
+                      </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.ItemTemplate>
+                      <DataTemplate>
+                        <StackPanel Spacing="8" Margin="0,8">
+                          <ContentControl IsEnabled="{Binding CanRun}" HorizontalContentAlignment="Stretch" IsTabStop="False">
+                            <Grid ColumnSpacing="16">
+                              <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                              </Grid.ColumnDefinitions>
+                              <StackPanel Spacing="4" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Name}" TextWrapping="Wrap" />
+                                <TextBlock Text="已停用" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                  Visibility="{Binding IsDisabled, Converter={StaticResource BooleanVisibilityConverter}}" />
+                              </StackPanel>
+                              <Button Grid.Column="1" Content="执行" Command="{Binding RunCommand}" VerticalAlignment="Center"
+                                AutomationProperties.Name="{Binding AccessibleName}" />
+                            </Grid>
+                          </ContentControl>
+                          <ProgressBar IsIndeterminate="True" Visibility="{Binding IsBusy, Converter={StaticResource BooleanVisibilityConverter}}"
+                            AutomationProperties.Name="正在执行场景" />
+                          <InfoBar IsOpen="{Binding Error, Converter={StaticResource HasTextConverter}}" Severity="Error" IsClosable="False"
+                            Message="{Binding Error}" AutomationProperties.LiveSetting="Polite" />
+                        </StackPanel>
+                      </DataTemplate>
+                    </ListView.ItemTemplate>
+                  </ListView>
+                  <TextBlock Text="这个家庭还没有手动场景" Style="{StaticResource SecondaryTextStyle}"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Visibility="{Binding IsEmpty, Converter={StaticResource BooleanVisibilityConverter}}" />
+                  <ProgressRing IsActive="{Binding IsBusy}" Width="32" Height="32" AutomationProperties.Name="正在加载手动场景"
+                    Visibility="{Binding IsBusy, Converter={StaticResource BooleanVisibilityConverter}}" />
+                </Grid>
+              </Grid>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
         <Button Content="退出登录" Command="{Binding SignOutCommand}" Style="{StaticResource QuietButtonStyle}"
           AutomationProperties.Name="退出小米账号" />
       </StackPanel>

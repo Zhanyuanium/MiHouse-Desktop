@@ -19,6 +19,10 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
     private const string _homesPayload =
         """{"limit":300,"fetch_share":true,"fetch_share_dev":true,"fetch_cariot":true,"plat_form":0,"app_ver":9,"fg":true}""";
     private const string _homeDeviceListPath = "v2/home/home_device_list";
+    private const string _sceneListPath =
+        "appgateway/miot/appsceneservice/AppSceneService/GetSimpleSceneList";
+    private const string _runScenePath =
+        "appgateway/miot/appsceneservice/AppSceneService/NewRunScene";
 
     private readonly HttpClient _httpClient;
     private readonly MiHomeRequestSigner _signer;
@@ -127,6 +131,78 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
         }
 
         return devices;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<MiScene>> GetScenesAsync(
+        MiHomeSession session,
+        MiHome home,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(home);
+
+        var payload = BuildSceneListPayload(home);
+        var response = await PostAsync(session, _sceneListPath, payload, cancellationToken)
+            .ConfigureAwait(false);
+        EnsureSuccess(response, _sceneListPath);
+
+        if (!response.TryGetProperty("result", out var result)
+            || result.ValueKind != JsonValueKind.Object
+            || !result.TryGetProperty("manual_scene_info_list", out var list)
+            || list.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var scenes = new List<MiScene>(list.GetArrayLength());
+        foreach (var item in list.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var id = ReadIdentifier(item, "scene_id");
+            if (string.IsNullOrEmpty(id))
+            {
+                continue;
+            }
+
+            var name = ReadString(item, "name");
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                name = $"场景 {id}";
+            }
+
+            var iconUrl = ReadString(item, "icon_url");
+            if (string.IsNullOrWhiteSpace(iconUrl))
+            {
+                iconUrl = null;
+            }
+
+            scenes.Add(new MiScene(id, name, ReadBoolean(item, "enable"), iconUrl));
+        }
+
+        return scenes;
+    }
+
+    /// <inheritdoc />
+    public async Task RunSceneAsync(
+        MiHomeSession session,
+        MiHome home,
+        string sceneId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(home);
+        ArgumentNullException.ThrowIfNull(sceneId);
+
+        var payload = BuildRunScenePayload(home, sceneId);
+        var response = await PostAsync(session, _runScenePath, payload, cancellationToken)
+            .ConfigureAwait(false);
+
+        EnsureSuccess(response, _runScenePath);
     }
 
     /// <inheritdoc />
@@ -532,6 +608,39 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
                 channelSiid,
                 specType));
         }
+    }
+
+    private static string BuildSceneListPayload(MiHome home)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("app_version", 12);
+            writer.WriteNumber("get_type", 2);
+            writer.WriteString("home_id", home.Id);
+            WriteNumericOrString(writer, "owner_uid", home.OwnerUserId);
+            writer.WriteEndObject();
+        }
+
+        return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    private static string BuildRunScenePayload(MiHome home, string sceneId)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("scene_id", sceneId);
+            writer.WriteNumber("scene_type", 2);
+            writer.WriteString("phone_id", "null");
+            writer.WriteString("home_id", home.Id);
+            WriteNumericOrString(writer, "owner_uid", home.OwnerUserId);
+            writer.WriteEndObject();
+        }
+
+        return Encoding.UTF8.GetString(stream.ToArray());
     }
 
     private static string BuildHomeDeviceListPayload(MiHome home, string startDid)

@@ -14,6 +14,8 @@ public sealed partial class PropertyRowViewModel : ObservableObject
     private readonly MiDevice _device;
     private readonly CancellationToken _token;
     private bool _isUpdatingValue = true;
+    private long _pollVersion;
+    private JsonElement? _lastWrittenValue;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ApplyCommand))]
@@ -93,6 +95,25 @@ public sealed partial class PropertyRowViewModel : ObservableObject
 
     private bool CanApply() => CanEdit && HasDisplayValue && (!IsChoice || SelectedOption is not null);
 
+    internal long PollVersion => _pollVersion;
+
+    internal void TryApplyPolledValue(JsonElement value, long version)
+    {
+        if (version != _pollVersion || HasPendingChanges || IsBusy ||
+            value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return;
+        }
+
+        if (IsWriteUnconfirmed && _lastWrittenValue is { } written && !JsonElement.DeepEquals(value, written))
+        {
+            return;
+        }
+
+        ReadValue(value);
+        IsWriteUnconfirmed = false;
+    }
+
     [RelayCommand(CanExecute = nameof(CanApply))]
     private async Task ApplyAsync()
     {
@@ -103,8 +124,8 @@ public sealed partial class PropertyRowViewModel : ObservableObject
         }
 
         IsBusy = true;
+        _pollVersion++;
         Error = null;
-        IsWriteUnconfirmed = false;
         try
         {
             double numericValue = NumericValue;
@@ -124,6 +145,7 @@ public sealed partial class PropertyRowViewModel : ObservableObject
                         : JsonSerializer.SerializeToElement(numericValue);
             await _controller.WriteAsync(_device, Key, value, _token);
             _token.ThrowIfCancellationRequested();
+            _lastWrittenValue = value.Clone();
             ReadValue(value);
             IsWriteUnconfirmed = true;
             if (!Property.Readable)

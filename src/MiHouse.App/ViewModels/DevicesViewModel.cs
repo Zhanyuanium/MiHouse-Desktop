@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MiHouse.Core.Auth;
@@ -68,6 +67,7 @@ public sealed partial class DevicesViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HeaderTitle))]
+    [NotifyPropertyChangedFor(nameof(HasSelectedHome))]
     public partial HomeRowViewModel? SelectedHome { get; set; }
 
     [ObservableProperty]
@@ -83,10 +83,13 @@ public sealed partial class DevicesViewModel : ObservableObject
         _controller = controller;
         _credentials = credentials;
         _session = session;
+        ScenePanel = new ScenesViewModel(cloud, session, RequestSceneConfirmationAsync);
     }
 
     public event Action? SignedOut;
     internal Func<ActionRowViewModel, CancellationToken, Task<bool>>? ConfirmAction { get; set; }
+    internal Func<SceneRowViewModel, CancellationToken, Task<bool>>? ConfirmScene { get; set; }
+    public ScenesViewModel ScenePanel { get; }
     public ObservableCollection<HomeRowViewModel> Homes { get; } = [];
     public ObservableCollection<RoomGroup> Rooms { get; } = [];
     public ObservableCollection<PropertyRowViewModel> Properties { get; } = [];
@@ -95,6 +98,7 @@ public sealed partial class DevicesViewModel : ObservableObject
     public string HeaderTitle => SelectedHome?.Name ?? "我的设备";
     public bool HasHomes => Homes.Count > 0;
     public bool HasSelection => SelectedDevice is not null;
+    public bool HasSelectedHome => SelectedHome is not null;
 
     [RelayCommand]
     private async Task RefreshAsync() => await LoadDevicesAsync();
@@ -186,6 +190,7 @@ public sealed partial class DevicesViewModel : ObservableObject
 
     private async Task LoadPropertiesAsync(DeviceRowViewModel? row)
     {
+        ResetPollingState();
         _selectionLifetime?.Cancel();
         _selectionLifetime?.Dispose();
         _selectionLifetime = new CancellationTokenSource();
@@ -222,22 +227,19 @@ public sealed partial class DevicesViewModel : ObservableObject
                 }
             }
 
-            MiPropertyKey[] keys = spec.Services.SelectMany(service => service.Properties
+            _readableKeys = spec.Services.SelectMany(service => service.Properties
                 .Where(property => property.Readable)
                 .Select(property => new MiPropertyKey(service.Iid, property.Iid))).ToArray();
-            IReadOnlyDictionary<MiPropertyKey, JsonElement> values = await _controller.ReadAsync(row.Device, keys, token);
-            token.ThrowIfCancellationRequested();
             foreach (SpecService service in spec.Services)
             {
                 foreach (SpecProperty property in service.Properties.Where(property => property.Readable || property.Writable || property.Notifiable))
                 {
-                    MiPropertyKey key = new(service.Iid, property.Iid);
-                    JsonElement? current = values.TryGetValue(key, out JsonElement value) ? value : null;
                     Properties.Add(new PropertyRowViewModel(_controller, row.Device, service.Description,
-                        service.Iid, property, current, token));
+                        service.Iid, property, null, token));
                 }
             }
 
+            await ReadCurrentValuesAsync(row.Device, _readableKeys, token);
             if (Properties.Count == 0 && ActionServices.Count == 0)
             {
                 DetailMessage = "此设备没有可显示的属性";
@@ -258,6 +260,7 @@ public sealed partial class DevicesViewModel : ObservableObject
             if (!token.IsCancellationRequested)
             {
                 IsDetailBusy = false;
+                StartPolling();
             }
         }
     }
@@ -270,6 +273,14 @@ public sealed partial class DevicesViewModel : ObservableObject
         token.ThrowIfCancellationRequested();
         return ConfirmAction is { } confirm
             ? confirm(action, token)
+            : throw new InvalidOperationException("无法显示确认对话框，操作未执行");
+    }
+
+    private Task<bool> RequestSceneConfirmationAsync(SceneRowViewModel scene, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        return ConfirmScene is { } confirm
+            ? confirm(scene, token)
             : throw new InvalidOperationException("无法显示确认对话框，操作未执行");
     }
 
@@ -313,6 +324,9 @@ public sealed partial class DevicesViewModel : ObservableObject
 
     public void Stop()
     {
+        _isPollingActive = false;
+        ResetPollingState();
+        ScenePanel.Stop();
         _listLifetime?.Cancel();
         _listLifetime?.Dispose();
         _listLifetime = null;
@@ -327,6 +341,7 @@ public sealed partial class DevicesViewModel : ObservableObject
 
     partial void OnSelectedHomeChanged(HomeRowViewModel? value)
     {
+        ScenePanel.SetHome(value?.Home);
         if (!_isUpdatingHomes)
         {
             _ = LoadDevicesAsync();

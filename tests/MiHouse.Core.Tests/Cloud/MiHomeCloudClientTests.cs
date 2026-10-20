@@ -384,6 +384,132 @@ public sealed class MiHomeCloudClientTests
         Assert.Null(devices[2].SpecType);
     }
 
+    [Fact]
+    public async Task GetScenesAsyncSendsOwnerScopedPayloadAndParsesScenes()
+    {
+        const string response = """
+            {"code":0,"result":{"manual_scene_info_list":[
+            {"scene_id":1001,"name":"Morning","enable":false,
+            "icon_url":"https://example.test/morning.png"},
+            {"scene_id":"1002","name":"Night","enable":1}]}}
+            """;
+        var handler = new StubHttpMessageHandler(response);
+        var client = CreateClient(handler);
+        var home = new MiHome("2001", "Shared Home", "8001", true, []);
+
+        var scenes = await client.GetScenesAsync(_session, home, CancellationToken.None);
+
+        Assert.Equal(2, scenes.Count);
+        Assert.Equal(
+            new MiScene("1001", "Morning", false, "https://example.test/morning.png"),
+            scenes[0]);
+        Assert.Equal(new MiScene("1002", "Night", true, null), scenes[1]);
+        Assert.Equal(
+            """{"app_version":12,"get_type":2,"home_id":"2001","owner_uid":8001}""",
+            DecryptRequestPayload(handler));
+        Assert.Equal(
+            new Uri("https://api.io.mi.com/app/appgateway/miot/appsceneservice/AppSceneService/GetSimpleSceneList"),
+            handler.RequestUri);
+    }
+
+    [Theory]
+    [InlineData("""{"code":0,"result":{"manual_scene_info_list":null}}""")]
+    [InlineData("""{"code":0,"result":{}}""")]
+    [InlineData("""{"code":0,"result":null}""")]
+    public async Task GetScenesAsyncReturnsEmptyWhenListMissingOrNull(string response)
+    {
+        var client = CreateClient(new StubHttpMessageHandler(response));
+
+        var scenes = await client.GetScenesAsync(
+            _session,
+            new MiHome("1001", "Home", "9001", false, []),
+            CancellationToken.None);
+
+        Assert.Empty(scenes);
+    }
+
+    [Fact]
+    public async Task RunSceneAsyncSendsExactPayload()
+    {
+        var handler = new StubHttpMessageHandler("""{"code":0}""");
+        var client = CreateClient(handler);
+
+        await client.RunSceneAsync(
+            _session,
+            new MiHome("1001", "Home", "9001", false, []),
+            "scene-7",
+            CancellationToken.None);
+
+        Assert.Equal(
+            """{"scene_id":"scene-7","scene_type":2,"phone_id":"null","home_id":"1001","owner_uid":9001}""",
+            DecryptRequestPayload(handler));
+        Assert.Equal(
+            new Uri("https://api.io.mi.com/app/appgateway/miot/appsceneservice/AppSceneService/NewRunScene"),
+            handler.RequestUri);
+    }
+
+    [Fact]
+    public async Task GetScenesAsyncParsesSceneEdgeCases()
+    {
+        const string response = """
+            {"code":0,"result":{"manual_scene_info_list":[
+            {"scene_id":"s1","name":"Valid","enable":true,"icon_url":"https://example.test/icon.png"},
+            {"scene_id":"s2","enable":0},
+            {"scene_id":"s3","name":"Empty Icon","enable":false,"icon_url":""},
+            {"name":"No Id","enable":true}]}}
+            """;
+        var client = CreateClient(new StubHttpMessageHandler(response));
+
+        var scenes = await client.GetScenesAsync(
+            _session,
+            new MiHome("1001", "Home", "9001", false, []),
+            CancellationToken.None);
+
+        Assert.Equal(3, scenes.Count);
+        Assert.Equal(
+            new MiScene("s1", "Valid", true, "https://example.test/icon.png"),
+            scenes[0]);
+        Assert.Equal(new MiScene("s2", "场景 s2", false, null), scenes[1]);
+        Assert.Equal(new MiScene("s3", "Empty Icon", false, null), scenes[2]);
+    }
+
+    [Fact]
+    public async Task RunSceneAsyncPreservesStringOwnerUidForSharedHome()
+    {
+        var handler = new StubHttpMessageHandler("""{"code":0}""");
+        var client = CreateClient(handler);
+        var home = new MiHome("home-9", "Shared Home", "00123", true, []);
+
+        await client.RunSceneAsync(_session, home, "scene-1", CancellationToken.None);
+
+        var payload = DecryptRequestPayload(handler);
+        Assert.Equal(
+            """{"scene_id":"scene-1","scene_type":2,"phone_id":"null","home_id":"home-9","owner_uid":"00123"}""",
+            payload);
+
+        using var document = JsonDocument.Parse(payload);
+        Assert.Equal(JsonValueKind.String, document.RootElement.GetProperty("owner_uid").ValueKind);
+        Assert.Equal("00123", document.RootElement.GetProperty("owner_uid").GetString());
+        Assert.Equal("home-9", document.RootElement.GetProperty("home_id").GetString());
+    }
+
+    [Fact]
+    public async Task RunSceneAsyncThrowsNonZeroOuterCode()
+    {
+        const string response = """{"code":-6,"message":"denied"}""";
+        var client = CreateClient(new StubHttpMessageHandler(response));
+
+        var error = await Assert.ThrowsAsync<MiHomeException>(() => client.RunSceneAsync(
+            _session,
+            new MiHome("1001", "Home", "9001", false, []),
+            "scene-7",
+            CancellationToken.None));
+
+        Assert.Equal(-6, error.Code);
+        Assert.Equal("denied", error.Message);
+        Assert.False(error.IsDeviceError);
+    }
+
     [Theory]
     [InlineData("""{"code":0,"result":[{"siid":2,"piid":1,"code":0,"value":true},{"siid":2,"piid":2,"code":-1},{"siid":3,"piid":1,"value":42}]}""")]
     [InlineData("""{"code":0,"result":{"result":[{"siid":2,"piid":1,"code":0,"value":true},{"siid":2,"piid":2,"code":-1},{"siid":3,"piid":1,"value":42}]}}""")]
