@@ -26,6 +26,7 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
 
     private readonly HttpClient _httpClient;
     private readonly MiHomeRequestSigner _signer;
+    private readonly IDeviceSecretStore? _secrets;
 
     /// <summary>
     /// Creates a client over the supplied <see cref="HttpClient"/>.
@@ -35,11 +36,18 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
     /// Overrides nonce generation, mainly for tests. Defaults to
     /// <see cref="MiHomeRequestSigner.CreateNonce"/>.
     /// </param>
-    public MiHomeCloudClient(HttpClient httpClient, Func<string>? nonceFactory = null)
+    /// <param name="secrets">
+    /// When supplied, LAN tokens reported by the cloud are copied into this store.
+    /// </param>
+    public MiHomeCloudClient(
+        HttpClient httpClient,
+        Func<string>? nonceFactory = null,
+        IDeviceSecretStore? secrets = null)
     {
         ArgumentNullException.ThrowIfNull(httpClient);
 
         _httpClient = httpClient;
+        _secrets = secrets;
         _signer = nonceFactory is null
             ? new MiHomeRequestSigner()
             : new MiHomeRequestSigner(null, nonceFactory, null, null);
@@ -557,7 +565,7 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
         return lookup;
     }
 
-    private static void AppendDevices(
+    private void AppendDevices(
         JsonElement result,
         IReadOnlyDictionary<string, string> roomNames,
         List<MiDevice> devices)
@@ -598,6 +606,18 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
                 specType = null;
             }
 
+            var localIp = ReadString(item, "localip");
+            if (string.IsNullOrWhiteSpace(localIp))
+            {
+                localIp = null;
+            }
+
+            var token = ReadString(item, "token");
+            if (!string.IsNullOrEmpty(token))
+            {
+                _secrets?.SetToken(did, token);
+            }
+
             devices.Add(new MiDevice(
                 did,
                 model,
@@ -606,7 +626,8 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
                 ReadOnline(item),
                 parentDid,
                 channelSiid,
-                specType));
+                specType,
+                localIp));
         }
     }
 

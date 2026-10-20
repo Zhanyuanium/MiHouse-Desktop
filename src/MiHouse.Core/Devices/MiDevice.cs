@@ -27,7 +27,8 @@ public sealed record MiDevice(
     bool IsOnline,
     string? ParentDid = null,
     int? ChannelSiid = null,
-    string? SpecType = null)
+    string? SpecType = null,
+    string? LocalIp = null)
 {
     /// <summary>
     /// Device id to use for control requests: the parent for split sub-devices, otherwise

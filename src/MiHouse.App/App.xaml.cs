@@ -5,6 +5,7 @@ using MiHouse.App.Security;
 using MiHouse.Core.Auth;
 using MiHouse.Core.Cloud;
 using MiHouse.Core.Devices;
+using MiHouse.Core.Lan;
 using MiHouse.Core.Spec;
 
 namespace MiHouse.App;
@@ -52,8 +53,13 @@ public partial class App : Application
         services.AddSingleton<IAuthService>(provider =>
             new MiHomeAuthService(provider.GetRequiredKeyedService<HttpClient>("auth")));
         services.AddSingleton<ICredentialStore, DpapiCredentialStore>();
+        services.AddSingleton<IDeviceSecretStore, InMemoryDeviceSecretStore>();
+        services.AddSingleton<ILanTransport, MiIoLanTransport>();
         services.AddSingleton<IMiHomeCloudClient>(provider =>
-            new MiHomeCloudClient(provider.GetRequiredService<HttpClient>()));
+            new MiHomeCloudClient(
+                provider.GetRequiredService<HttpClient>(),
+                nonceFactory: null,
+                provider.GetRequiredService<IDeviceSecretStore>()));
         services.AddSingleton<ISpecCatalog>(provider =>
             new SpecCatalog(provider.GetRequiredService<HttpClient>()));
 

@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
+using MiHouse.Core.Lan;
 using MiHouse.Core.Session;
 using MiHouse.Core.Spec;
 
@@ -6,18 +8,31 @@ namespace MiHouse.Core.Devices;
 
 /// <summary>
 /// Device-level control. Spec lookups prefer the device's exact <c>spec_type</c> and fall back to
-/// the model index; control calls target <see cref="MiDevice.ControlDid"/>.
+/// the model index; control calls target <see cref="MiDevice.ControlDid"/>. When a local IP and
+/// token are known, LAN is tried first and the cloud is the fallback.
 /// </summary>
 public sealed class DeviceController : IDeviceController
 {
     private readonly IMiHomeCloudClient _cloud;
     private readonly ISpecCatalog _specs;
     private readonly MiHomeSession _session;
+    private static readonly TimeSpan _lanBlockDuration = TimeSpan.FromMinutes(5);
+    private readonly ILanTransport? _lan;
+    private readonly IDeviceSecretStore? _secrets;
+    private readonly Func<DateTimeOffset> _clock;
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _lanBlockedUntil =
+        new(StringComparer.Ordinal);
 
     /// <summary>
     /// Creates a controller for one authenticated session.
     /// </summary>
-    public DeviceController(IMiHomeCloudClient cloud, ISpecCatalog specs, MiHomeSession session)
+    public DeviceController(
+        IMiHomeCloudClient cloud,
+        ISpecCatalog specs,
+        MiHomeSession session,
+        ILanTransport? lan = null,
+        IDeviceSecretStore? secrets = null,
+        Func<DateTimeOffset>? clock = null)
     {
         ArgumentNullException.ThrowIfNull(cloud);
         ArgumentNullException.ThrowIfNull(specs);
@@ -26,6 +41,9 @@ public sealed class DeviceController : IDeviceController
         _cloud = cloud;
         _specs = specs;
         _session = session;
+        _lan = lan;
+        _secrets = secrets;
+        _clock = clock ?? (static () => DateTimeOffset.UtcNow);
     }
 
     /// <inheritdoc />
@@ -87,6 +105,31 @@ public sealed class DeviceController : IDeviceController
             EnsureChannel(device, property.Siid);
         }
 
+        var lan = _lan;
+        var lanEndpoint = CreateLanEndpoint(device);
+        if (lan is not null && lanEndpoint is not null)
+        {
+            try
+            {
+                var lanValues = await lan
+                    .GetPropertiesAsync(lanEndpoint, properties, cancellationToken)
+                    .ConfigureAwait(false);
+
+                foreach (var value in lanValues)
+                {
+                    values[value.Key] = value.Value;
+                }
+
+                ClearLanBlock(device.ControlDid);
+                return values;
+            }
+            catch (LanUnavailableException)
+            {
+                values.Clear();
+                BlockLan(device.ControlDid);
+            }
+        }
+
         var read = await _cloud
             .GetPropertiesAsync(_session, device.ControlDid, properties, cancellationToken)
             .ConfigureAwait(false);
@@ -100,7 +143,7 @@ public sealed class DeviceController : IDeviceController
     }
 
     /// <inheritdoc />
-    public Task WriteAsync(
+    public async Task WriteAsync(
         MiDevice device,
         MiPropertyKey property,
         JsonElement value,
@@ -109,11 +152,32 @@ public sealed class DeviceController : IDeviceController
         ArgumentNullException.ThrowIfNull(device);
         EnsureChannel(device, property.Siid);
 
-        return _cloud.SetPropertyAsync(_session, device.ControlDid, property, value, cancellationToken);
+        var lan = _lan;
+        var lanEndpoint = CreateLanEndpoint(device);
+        if (lan is not null && lanEndpoint is not null)
+        {
+            try
+            {
+                await lan
+                    .SetPropertyAsync(lanEndpoint, property, value, cancellationToken)
+                    .ConfigureAwait(false);
+
+                ClearLanBlock(device.ControlDid);
+                return;
+            }
+            catch (LanUnavailableException)
+            {
+                BlockLan(device.ControlDid);
+            }
+        }
+
+        await _cloud
+            .SetPropertyAsync(_session, device.ControlDid, property, value, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <inheritdoc />
-    public Task<JsonElement> InvokeAsync(
+    public async Task<JsonElement> InvokeAsync(
         MiDevice device,
         MiActionKey action,
         IReadOnlyList<JsonElement> input,
@@ -123,8 +187,59 @@ public sealed class DeviceController : IDeviceController
         ArgumentNullException.ThrowIfNull(input);
         EnsureChannel(device, action.Siid);
 
-        return _cloud.InvokeActionAsync(_session, device.ControlDid, action, input, cancellationToken);
+        var lan = _lan;
+        var lanEndpoint = CreateLanEndpoint(device);
+        if (lan is not null && lanEndpoint is not null)
+        {
+            try
+            {
+                var output = await lan
+                    .InvokeActionAsync(lanEndpoint, action, input, cancellationToken)
+                    .ConfigureAwait(false);
+
+                ClearLanBlock(device.ControlDid);
+                return output;
+            }
+            catch (LanUnavailableException)
+            {
+                BlockLan(device.ControlDid);
+            }
+        }
+
+        return await _cloud
+            .InvokeActionAsync(_session, device.ControlDid, action, input, cancellationToken)
+            .ConfigureAwait(false);
     }
+
+    private LanEndpoint? CreateLanEndpoint(MiDevice device)
+    {
+        if (_lan is null
+            || _secrets is null
+            || device.LocalIp is null
+            || !LanAddress.IsPrivate(device.LocalIp))
+        {
+            return null;
+        }
+
+        if (_lanBlockedUntil.TryGetValue(device.ControlDid, out var blockedUntil)
+            && blockedUntil > _clock())
+        {
+            return null;
+        }
+
+        var token = _secrets.GetToken(device.ControlDid) ?? _secrets.GetToken(device.Did);
+        if (string.IsNullOrEmpty(token))
+        {
+            return null;
+        }
+
+        return new LanEndpoint(device.ControlDid, device.LocalIp, token);
+    }
+
+    private void ClearLanBlock(string controlDid) => _lanBlockedUntil.TryRemove(controlDid, out _);
+
+    private void BlockLan(string controlDid)
+        => _lanBlockedUntil[controlDid] = _clock() + _lanBlockDuration;
 
     private static void EnsureChannel(MiDevice device, int siid)
     {

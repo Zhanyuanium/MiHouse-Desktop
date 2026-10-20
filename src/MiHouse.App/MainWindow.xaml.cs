@@ -5,6 +5,7 @@ using MiHouse.App.ViewModels;
 using MiHouse.App.Views;
 using MiHouse.Core.Auth;
 using MiHouse.Core.Devices;
+using MiHouse.Core.Lan;
 using MiHouse.Core.Session;
 using MiHouse.Core.Spec;
 using Windows.Graphics;
@@ -20,14 +21,18 @@ public sealed partial class MainWindow : Window
     private readonly ICredentialStore _credentials;
     private readonly IMiHomeCloudClient _cloud;
     private readonly ISpecCatalog _specs;
+    private readonly IDeviceSecretStore _secrets;
+    private readonly ILanTransport _lan;
 
     public MainWindow(ILogger<MainWindow> logger, IAuthService auth, ICredentialStore credentials,
-        IMiHomeCloudClient cloud, ISpecCatalog specs)
+        IMiHomeCloudClient cloud, ISpecCatalog specs, IDeviceSecretStore secrets, ILanTransport lan)
     {
         _auth = auth;
         _credentials = credentials;
         _cloud = cloud;
         _specs = specs;
+        _secrets = secrets;
+        _lan = lan;
         InitializeComponent();
         SizeToDefaultLogicalSize();
         Closed += OnClosed;
@@ -51,6 +56,7 @@ public sealed partial class MainWindow : Window
     private void ShowLogin()
     {
         StopCurrentPage();
+        _secrets.Clear();
         var viewModel = new LoginViewModel(_auth, _credentials);
         viewModel.SignedIn += ShowDevices;
         RootFrame.Content = new LoginPage(viewModel);
@@ -59,7 +65,8 @@ public sealed partial class MainWindow : Window
     private void ShowDevices(MiHomeSession session)
     {
         StopCurrentPage();
-        var viewModel = new DevicesViewModel(_cloud, new DeviceController(_cloud, _specs, session), _credentials, session);
+        var controller = new DeviceController(_cloud, _specs, session, _lan, _secrets);
+        var viewModel = new DevicesViewModel(_cloud, controller, _credentials, session);
         viewModel.SignedOut += ShowLogin;
         RootFrame.Content = new DevicesPage(viewModel);
     }

@@ -362,6 +362,34 @@ public sealed class MiHomeCloudClientTests
     }
 
     [Fact]
+    public async Task GetDevicesAsyncParsesLocalIpAndStoresToken()
+    {
+        const string response = """
+            {"code":0,"result":{"device_info":[
+            {"did":"111","model":"m","name":"A","isOnline":true,
+            "localip":"192.168.1.20","token":"0123456789abcdef"},
+            {"did":"222","model":"m","name":"B","isOnline":true,"localip":"","token":""},
+            {"did":"","model":"m","name":"C","isOnline":true,
+            "localip":"10.0.0.5","token":"should-not-be-stored"}],
+            "has_more":false}}
+            """;
+        var secrets = new InMemoryDeviceSecretStore();
+        var client = CreateClient(new StubHttpMessageHandler(response), secrets);
+
+        var devices = await client.GetDevicesAsync(
+            _session,
+            new MiHome("1001", "Home", "9001", false, []),
+            CancellationToken.None);
+
+        Assert.Equal(2, devices.Count);
+        Assert.Equal("192.168.1.20", devices[0].LocalIp);
+        Assert.Null(devices[1].LocalIp);
+        Assert.Equal("0123456789abcdef", secrets.GetToken("111"));
+        Assert.Null(secrets.GetToken("222"));
+        Assert.Null(secrets.GetToken(string.Empty));
+    }
+
+    [Fact]
     public async Task GetDevicesAsyncParsesSpecType()
     {
         const string response = """
@@ -774,8 +802,10 @@ public sealed class MiHomeCloudClientTests
         Assert.Contains("+", values["data"]);
     }
 
-    private static MiHomeCloudClient CreateClient(StubHttpMessageHandler handler)
-        => new(new HttpClient(handler), () => _nonce);
+    private static MiHomeCloudClient CreateClient(
+        StubHttpMessageHandler handler,
+        IDeviceSecretStore? secrets = null)
+        => new(new HttpClient(handler), () => _nonce, secrets);
 
     private static void AssertRoom(MiRoom room, string id, string name, params string[] deviceIds)
     {
