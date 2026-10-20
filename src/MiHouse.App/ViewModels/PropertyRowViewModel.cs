@@ -131,25 +131,30 @@ public sealed partial class PropertyRowViewModel : ObservableObject
                 return;
             }
 
-            try
+            foreach (int delay in new[] { 300, 700, 1500 })
             {
-                IReadOnlyDictionary<MiPropertyKey, JsonElement> values = await _controller.ReadAsync(_device, [Key], _token);
-                _token.ThrowIfCancellationRequested();
-                if (values.TryGetValue(Key, out JsonElement current) &&
-                    current.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined)
+                await Task.Delay(delay, _token);
+                try
                 {
-                    ReadValue(current);
-                    IsWriteUnconfirmed = false;
+                    IReadOnlyDictionary<MiPropertyKey, JsonElement> values = await _controller.ReadAsync(_device, [Key], _token);
+                    _token.ThrowIfCancellationRequested();
+                    if (values.TryGetValue(Key, out JsonElement current) &&
+                        current.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined &&
+                        JsonElement.DeepEquals(current, value))
+                    {
+                        ReadValue(current);
+                        IsWriteUnconfirmed = false;
+                        break;
+                    }
                 }
-            }
-            catch (OperationCanceledException) when (_token.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception)
-            {
-                // The write succeeded. A failed read-back must not report a write failure.
-                IsWriteUnconfirmed = true;
+                catch (OperationCanceledException) when (_token.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception)
+                {
+                    // Keep the optimistic value and retry; a read failure is not a write failure.
+                }
             }
         }
         catch (OperationCanceledException) when (_token.IsCancellationRequested)
