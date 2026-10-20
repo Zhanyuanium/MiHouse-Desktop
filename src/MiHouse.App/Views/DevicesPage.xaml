@@ -112,50 +112,58 @@
                 AutomationProperties.Name="正在读取设备属性" />
               <TextBlock Text="{Binding DetailMessage}" Style="{StaticResource SecondaryTextStyle}" />
             </StackPanel>
-            <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-              <ItemsControl ItemsSource="{Binding Properties}" HorizontalContentAlignment="Stretch">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate>
-                    <Border Style="{StaticResource PropertySurfaceStyle}">
-                      <StackPanel Spacing="8">
-                        <TextBlock Text="{Binding ServiceName}" Style="{ThemeResource CaptionTextBlockStyle}"
-                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-                        <TextBlock Text="{Binding Name}" Style="{ThemeResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
-                        <TextBlock Text="值不可用" Style="{StaticResource SecondaryTextStyle}"
-                          Visibility="{Binding HasValue, Converter={StaticResource BooleanVisibilityConverter}, ConverterParameter=Inverse}" />
-                        <TextBlock Text="{Binding TextValue}" Style="{StaticResource SecondaryTextStyle}" AutomationProperties.Name="当前属性值"
-                          Visibility="{Binding HasValue, Converter={StaticResource BooleanVisibilityConverter}}" />
-                        <ToggleSwitch IsOn="{Binding BoolValue, Mode=TwoWay}" IsEnabled="{Binding CanEdit}"
-                          OnContent="开启" OffContent="关闭" AutomationProperties.Name="{Binding Name}"
-                          Visibility="{Binding IsBoolean, Converter={StaticResource BooleanVisibilityConverter}}" />
-                        <ComboBox ItemsSource="{Binding Options}" SelectedItem="{Binding SelectedOption, Mode=TwoWay}"
-                          PlaceholderText="选择值" HorizontalAlignment="Stretch" IsEnabled="{Binding CanEdit}" AutomationProperties.Name="{Binding Name}"
-                          Visibility="{Binding IsChoice, Converter={StaticResource BooleanVisibilityConverter}}">
-                          <ComboBox.ItemTemplate>
-                            <DataTemplate x:DataType="spec:SpecValueList">
-                              <TextBlock Text="{x:Bind Description}" />
-                            </DataTemplate>
-                          </ComboBox.ItemTemplate>
-                        </ComboBox>
-                        <StackPanel Spacing="4" Visibility="{Binding IsRange, Converter={StaticResource BooleanVisibilityConverter}}">
-                          <Slider Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" StepFrequency="{Binding Step}"
-                            TickFrequency="{Binding Step}" SnapsTo="StepValues" Value="{Binding NumericValue, Mode=TwoWay}"
-                            IsEnabled="{Binding CanEdit}" AutomationProperties.Name="{Binding Name}" />
-                          <TextBlock Text="{Binding NumericText}" HorizontalAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}"
-                            Visibility="{Binding HasDisplayValue, Converter={StaticResource BooleanVisibilityConverter}}" />
-                        </StackPanel>
-                        <Button Content="应用" Command="{Binding ApplyCommand}" AutomationProperties.Name="{Binding ApplyLabel}"
-                          Visibility="{Binding IsEditable, Converter={StaticResource BooleanVisibilityConverter}}" />
-                        <ProgressBar IsIndeterminate="True" Visibility="{Binding IsBusy, Converter={StaticResource BooleanVisibilityConverter}}"
-                          AutomationProperties.Name="正在写入属性" />
-                        <InfoBar IsOpen="{Binding Error, Converter={StaticResource HasTextConverter}}" IsClosable="False"
-                          Severity="Error" Message="{Binding Error}" AutomationProperties.LiveSetting="Polite" />
+            <ListView Grid.Row="2" ItemsSource="{Binding Properties}" SelectionMode="None" IsItemClickEnabled="False"
+              HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+              ScrollViewer.VerticalScrollBarVisibility="Auto" AutomationProperties.Name="设备属性">
+              <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem">
+                  <Setter Property="Padding" Value="0" />
+                  <Setter Property="Margin" Value="0" />
+                  <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                  <Setter Property="Background" Value="Transparent" />
+                </Style>
+              </ListView.ItemContainerStyle>
+              <ListView.ItemTemplate>
+                <DataTemplate>
+                  <Border Style="{StaticResource PropertySurfaceStyle}">
+                    <StackPanel Spacing="8">
+                      <TextBlock Text="{Binding ServiceName}" Style="{ThemeResource CaptionTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                      <TextBlock Text="{Binding Name}" Style="{ThemeResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
+                      <TextBlock Text="值不可用" Style="{StaticResource SecondaryTextStyle}"
+                        Visibility="{Binding HasValue, Converter={StaticResource BooleanVisibilityConverter}, ConverterParameter=Inverse}" />
+                      <TextBlock Text="{Binding TextValue}" Style="{StaticResource SecondaryTextStyle}" AutomationProperties.Name="当前属性值"
+                        Visibility="{Binding HasValue, Converter={StaticResource BooleanVisibilityConverter}}" />
+                      <ToggleSwitch IsOn="{Binding BoolValue, Mode=TwoWay}" IsEnabled="{Binding CanEdit}"
+                        OnContent="开启" OffContent="关闭" AutomationProperties.Name="{Binding Name}"
+                        Visibility="{Binding IsBoolean, Converter={StaticResource BooleanVisibilityConverter}}" />
+                      <ComboBox ItemsSource="{Binding Options}" SelectedItem="{Binding SelectedOption, Mode=TwoWay}"
+                        PlaceholderText="选择值" HorizontalAlignment="Stretch" IsEnabled="{Binding CanEdit}" AutomationProperties.Name="{Binding Name}"
+                        Visibility="{Binding IsChoice, Converter={StaticResource BooleanVisibilityConverter}}">
+                        <ComboBox.ItemTemplate>
+                          <DataTemplate x:DataType="spec:SpecValueList">
+                            <TextBlock Text="{x:Bind Description}" />
+                          </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                      </ComboBox>
+                      <StackPanel Spacing="4" Visibility="{Binding IsRange, Converter={StaticResource BooleanVisibilityConverter}}">
+                        <Slider Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" StepFrequency="{Binding Step}"
+                          TickFrequency="{Binding Step}" SnapsTo="StepValues" Value="{Binding NumericValue, Mode=TwoWay}"
+                          IsEnabled="{Binding CanEdit}" AutomationProperties.Name="{Binding Name}" />
+                        <TextBlock Text="{Binding NumericText}" HorizontalAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}"
+                          Visibility="{Binding HasDisplayValue, Converter={StaticResource BooleanVisibilityConverter}}" />
                       </StackPanel>
-                    </Border>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </ScrollViewer>
+                      <Button Content="应用" Command="{Binding ApplyCommand}" AutomationProperties.Name="{Binding ApplyLabel}"
+                        Visibility="{Binding IsEditable, Converter={StaticResource BooleanVisibilityConverter}}" />
+                      <ProgressBar IsIndeterminate="True" Visibility="{Binding IsBusy, Converter={StaticResource BooleanVisibilityConverter}}"
+                        AutomationProperties.Name="正在写入属性" />
+                      <InfoBar IsOpen="{Binding Error, Converter={StaticResource HasTextConverter}}" IsClosable="False"
+                        Severity="Error" Message="{Binding Error}" AutomationProperties.LiveSetting="Polite" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ListView.ItemTemplate>
+            </ListView>
           </Grid>
         </SplitView.Pane>
         <Grid>
