@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
+using MiHouse.App.Diagnostics;
 using MiHouse.App.Security;
 using MiHouse.Core.Auth;
 using MiHouse.Core.Cloud;
@@ -22,6 +23,12 @@ public partial class App : Application
 
     public App()
     {
+        UnhandledException += OnUnhandledException;
+        AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
+        TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+
+        CrashLog.Prune();
+
         InitializeComponent();
         Services = ConfigureServices();
     }
@@ -35,6 +42,33 @@ public partial class App : Application
     {
         _window = Services.GetRequiredService<MainWindow>();
         _window.Activate();
+    }
+
+    private static void OnUnhandledException(
+        object sender,
+        Microsoft.UI.Xaml.UnhandledExceptionEventArgs args)
+    {
+        CrashLog.Write("Application.UnhandledException", handled: false, args.Exception);
+
+        // Keep the process crashing visibly instead of continuing in an unknown state.
+        args.Handled = false;
+    }
+
+    private static void OnAppDomainUnhandledException(
+        object sender,
+        System.UnhandledExceptionEventArgs args)
+    {
+        CrashLog.Write(
+            "AppDomain.UnhandledException",
+            handled: false,
+            args.ExceptionObject as Exception);
+    }
+
+    private static void OnUnobservedTaskException(
+        object? sender,
+        UnobservedTaskExceptionEventArgs args)
+    {
+        CrashLog.Write("TaskScheduler.UnobservedTaskException", handled: false, args.Exception);
     }
 
     private static ServiceProvider ConfigureServices()

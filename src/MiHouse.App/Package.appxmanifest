@@ -16,7 +16,7 @@
   <mp:PhoneIdentity PhoneProductId="E7E58AE2-FE69-4041-B3CB-BF61B9EC1A47" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
   <Properties>
-    <DisplayName>MiHouse.App</DisplayName>
+    <DisplayName>MiHouse</DisplayName>
     <PublisherDisplayName>AppPublisher</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
@@ -35,8 +35,8 @@
       Executable="$targetnametoken$.exe"
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
-        DisplayName="MiHouse.App"
-        Description="MiHouse.App"
+        DisplayName="MiHouse"
+        Description="小米智能家居桌面控制"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">
