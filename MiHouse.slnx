@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MiHouse.App/MiHouse.App.csproj" />
+    <Project Path="src/MiHouse.Core/MiHouse.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MiHouse.Core.Tests/MiHouse.Core.Tests.csproj" />
+  </Folder>
+</Solution>

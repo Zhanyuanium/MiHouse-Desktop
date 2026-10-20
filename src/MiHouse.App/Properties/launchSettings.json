@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "MiHouse.App (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "MiHouse.App (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
