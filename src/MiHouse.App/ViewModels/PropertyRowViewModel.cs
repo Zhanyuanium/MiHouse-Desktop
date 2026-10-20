@@ -3,7 +3,6 @@ using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MiHouse.Core.Devices;
-using MiHouse.Core.Session;
 using MiHouse.Core.Spec;
 
 namespace MiHouse.App.ViewModels;
@@ -11,9 +10,8 @@ namespace MiHouse.App.ViewModels;
 [Microsoft.UI.Xaml.Data.Bindable]
 public sealed partial class PropertyRowViewModel : ObservableObject
 {
-    private readonly IMiHomeCloudClient _cloud;
-    private readonly MiHomeSession _session;
-    private readonly string _did;
+    private readonly IDeviceController _controller;
+    private readonly MiDevice _device;
     private readonly CancellationToken _token;
     private bool _isUpdatingValue = true;
 
@@ -24,6 +22,9 @@ public sealed partial class PropertyRowViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string? Error { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsWriteUnconfirmed { get; set; }
 
     [ObservableProperty]
     public partial bool BoolValue { get; set; }
@@ -49,12 +50,11 @@ public sealed partial class PropertyRowViewModel : ObservableObject
     [ObservableProperty]
     public partial string TextValue { get; set; }
 
-    public PropertyRowViewModel(IMiHomeCloudClient cloud, MiHomeSession session, string did,
+    public PropertyRowViewModel(IDeviceController controller, MiDevice device,
         string serviceName, int siid, SpecProperty property, JsonElement? value, CancellationToken token)
     {
-        _cloud = cloud;
-        _session = session;
-        _did = did;
+        _controller = controller;
+        _device = device;
         _token = token;
         TextValue = string.Empty;
         Property = property;
@@ -104,6 +104,7 @@ public sealed partial class PropertyRowViewModel : ObservableObject
 
         IsBusy = true;
         Error = null;
+        IsWriteUnconfirmed = false;
         try
         {
             double numericValue = NumericValue;
@@ -121,16 +122,45 @@ public sealed partial class PropertyRowViewModel : ObservableObject
                     : IsInteger
                         ? JsonSerializer.SerializeToElement((long)Math.Round(numericValue))
                         : JsonSerializer.SerializeToElement(numericValue);
-            await _cloud.SetPropertyAsync(_session, _did, Key, value, _token);
+            await _controller.WriteAsync(_device, Key, value, _token);
             _token.ThrowIfCancellationRequested();
             ReadValue(value);
+            IsWriteUnconfirmed = true;
+            if (!Property.Readable)
+            {
+                return;
+            }
+
+            try
+            {
+                IReadOnlyDictionary<MiPropertyKey, JsonElement> values = await _controller.ReadAsync(_device, [Key], _token);
+                _token.ThrowIfCancellationRequested();
+                if (values.TryGetValue(Key, out JsonElement current) &&
+                    current.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined)
+                {
+                    ReadValue(current);
+                    IsWriteUnconfirmed = false;
+                }
+            }
+            catch (OperationCanceledException) when (_token.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                // The write succeeded. A failed read-back must not report a write failure.
+                IsWriteUnconfirmed = true;
+            }
         }
         catch (OperationCanceledException) when (_token.IsCancellationRequested)
         {
         }
         catch (Exception ex)
         {
-            Error = ex.Message;
+            if (!_token.IsCancellationRequested)
+            {
+                Error = DeviceErrorText.Describe(ex);
+            }
         }
         finally
         {

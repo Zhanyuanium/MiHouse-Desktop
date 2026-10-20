@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MiHouse.Core.Auth;
@@ -39,7 +40,7 @@ public sealed partial class RoomGroup(string name, IEnumerable<DeviceRowViewMode
 public sealed partial class DevicesViewModel : ObservableObject
 {
     private readonly IMiHomeCloudClient _cloud;
-    private readonly ISpecCatalog _specs;
+    private readonly IDeviceController _controller;
     private readonly ICredentialStore _credentials;
     private readonly MiHomeSession _session;
     private CancellationTokenSource? _listLifetime;
@@ -76,18 +77,20 @@ public sealed partial class DevicesViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasSelection))]
     public partial DeviceRowViewModel? SelectedDevice { get; set; }
 
-    public DevicesViewModel(IMiHomeCloudClient cloud, ISpecCatalog specs, ICredentialStore credentials, MiHomeSession session)
+    public DevicesViewModel(IMiHomeCloudClient cloud, IDeviceController controller, ICredentialStore credentials, MiHomeSession session)
     {
         _cloud = cloud;
-        _specs = specs;
+        _controller = controller;
         _credentials = credentials;
         _session = session;
     }
 
     public event Action? SignedOut;
+    internal Func<ActionRowViewModel, CancellationToken, Task<bool>>? ConfirmAction { get; set; }
     public ObservableCollection<HomeRowViewModel> Homes { get; } = [];
     public ObservableCollection<RoomGroup> Rooms { get; } = [];
     public ObservableCollection<PropertyRowViewModel> Properties { get; } = [];
+    public ObservableCollection<ActionServiceViewModel> ActionServices { get; } = [];
     public string AccountLabel => $"小米账号 {_session.UserId}";
     public string HeaderTitle => SelectedHome?.Name ?? "我的设备";
     public bool HasHomes => Homes.Count > 0;
@@ -166,7 +169,7 @@ public sealed partial class DevicesViewModel : ObservableObject
         {
             if (!token.IsCancellationRequested)
             {
-                Error = ex.Message;
+                Error = DeviceErrorText.Describe(ex);
             }
         }
         finally
@@ -188,6 +191,7 @@ public sealed partial class DevicesViewModel : ObservableObject
         _selectionLifetime = new CancellationTokenSource();
         CancellationToken token = _selectionLifetime.Token;
         Properties.Clear();
+        ActionServices.Clear();
         DetailError = null;
         DetailMessage = null;
         IsDetailBusy = row is not null;
@@ -198,7 +202,7 @@ public sealed partial class DevicesViewModel : ObservableObject
 
         try
         {
-            SpecInstance? spec = await _specs.GetForModelAsync(row.Model, token);
+            SpecInstance? spec = await _controller.GetSpecAsync(row.Device, token);
             token.ThrowIfCancellationRequested();
             if (spec is null)
             {
@@ -206,27 +210,35 @@ public sealed partial class DevicesViewModel : ObservableObject
                 return;
             }
 
-            SpecService[] services = spec.Services
-                .Where(service => row.Device.ChannelSiid is null || service.Iid == row.Device.ChannelSiid)
-                .ToArray();
-            MiPropertyKey[] keys = services.SelectMany(service => service.Properties
+            foreach (SpecService service in spec.Services.Where(service => service.Actions.Count > 0))
+            {
+                // Unbinding is an account operation that this client does not expose.
+                SpecAction[] actions = service.Actions
+                    .Where(action => !action.Type.Contains("unbind", StringComparison.OrdinalIgnoreCase)).ToArray();
+                if (actions.Length > 0)
+                {
+                    ActionServices.Add(new ActionServiceViewModel(service.Description, actions.Select(action =>
+                        new ActionRowViewModel(_controller, row.Device, service.Iid, action, token, RequestActionConfirmationAsync)).ToArray()));
+                }
+            }
+
+            MiPropertyKey[] keys = spec.Services.SelectMany(service => service.Properties
                 .Where(property => property.Readable)
                 .Select(property => new MiPropertyKey(service.Iid, property.Iid))).ToArray();
-            IReadOnlyList<MiPropertyValue> values = keys.Length == 0 ? [] :
-                await _cloud.GetPropertiesAsync(_session, row.Device.ControlDid, keys, token);
+            IReadOnlyDictionary<MiPropertyKey, JsonElement> values = await _controller.ReadAsync(row.Device, keys, token);
             token.ThrowIfCancellationRequested();
-            foreach (SpecService service in services)
+            foreach (SpecService service in spec.Services)
             {
                 foreach (SpecProperty property in service.Properties.Where(property => property.Readable || property.Writable || property.Notifiable))
                 {
                     MiPropertyKey key = new(service.Iid, property.Iid);
-                    MiPropertyValue? current = values.Where(value => value.Key == key).Select(value => (MiPropertyValue?)value).FirstOrDefault();
-                    Properties.Add(new PropertyRowViewModel(_cloud, _session, row.Device.ControlDid, service.Description,
-                        service.Iid, property, current?.Value, token));
+                    JsonElement? current = values.TryGetValue(key, out JsonElement value) ? value : null;
+                    Properties.Add(new PropertyRowViewModel(_controller, row.Device, service.Description,
+                        service.Iid, property, current, token));
                 }
             }
 
-            if (Properties.Count == 0)
+            if (Properties.Count == 0 && ActionServices.Count == 0)
             {
                 DetailMessage = "此设备没有可显示的属性";
             }
@@ -238,7 +250,7 @@ public sealed partial class DevicesViewModel : ObservableObject
         {
             if (!token.IsCancellationRequested)
             {
-                DetailError = ex.Message;
+                DetailError = DeviceErrorText.Describe(ex);
             }
         }
         finally
@@ -252,6 +264,14 @@ public sealed partial class DevicesViewModel : ObservableObject
 
     [RelayCommand]
     private void CloseDetails() => SelectedDevice = null;
+
+    private Task<bool> RequestActionConfirmationAsync(ActionRowViewModel action, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        return ConfirmAction is { } confirm
+            ? confirm(action, token)
+            : throw new InvalidOperationException("无法显示确认对话框，操作未执行");
+    }
 
     [RelayCommand]
     private async Task SignOutAsync()
@@ -277,6 +297,7 @@ public sealed partial class DevicesViewModel : ObservableObject
             OnPropertyChanged(nameof(HasHomes));
             Rooms.Clear();
             Properties.Clear();
+            ActionServices.Clear();
             IsEmpty = false;
             HasNoHomes = false;
             DetailError = null;
@@ -286,7 +307,7 @@ public sealed partial class DevicesViewModel : ObservableObject
         catch (Exception ex)
         {
             _isSigningOut = false;
-            Error = $"退出登录失败：{ex.Message}";
+            Error = $"退出登录失败：{DeviceErrorText.Describe(ex)}";
         }
     }
 

@@ -1,0 +1,122 @@
+using System.ComponentModel;
+using System.Text.Json;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using MiHouse.Core.Devices;
+using MiHouse.Core.Spec;
+
+namespace MiHouse.App.ViewModels;
+
+[Microsoft.UI.Xaml.Data.Bindable]
+public sealed partial class ActionServiceViewModel(string name, IReadOnlyList<ActionRowViewModel> actions)
+{
+    public string Name { get; } = name;
+    public IReadOnlyList<ActionRowViewModel> Actions { get; } = actions;
+}
+
+[Microsoft.UI.Xaml.Data.Bindable]
+public sealed partial class ActionRowViewModel : ObservableObject
+{
+    private readonly IDeviceController _controller;
+    private readonly MiDevice _device;
+    private readonly CancellationToken _token;
+    private readonly Func<ActionRowViewModel, CancellationToken, Task<bool>> _confirm;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanEdit))]
+    [NotifyCanExecuteChangedFor(nameof(InvokeCommand))]
+    public partial bool IsBusy { get; set; }
+
+    [ObservableProperty]
+    public partial string? Error { get; set; }
+
+    [ObservableProperty]
+    public partial string? Output { get; set; }
+
+    public ActionRowViewModel(IDeviceController controller, MiDevice device, int siid, SpecAction action,
+        CancellationToken token, Func<ActionRowViewModel, CancellationToken, Task<bool>> confirm)
+    {
+        _controller = controller;
+        _device = device;
+        _token = token;
+        _confirm = confirm;
+        Key = new MiActionKey(siid, action.Iid);
+        Name = action.Description;
+        ConfirmationMessage = new[] { "reset", "factory", "delete", "remove" }
+            .Any(keyword => action.Type.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+            ? "该操作可能重置设备或删除数据，且无法撤销。"
+            : $"确定要执行「{Name}」吗？";
+        Inputs = action.Inputs.Select(property => new ActionInputViewModel(property)).ToArray();
+        foreach (ActionInputViewModel input in Inputs)
+        {
+            input.PropertyChanged += OnInputPropertyChanged;
+        }
+    }
+
+    public MiActionKey Key { get; }
+    public string Name { get; }
+    public string ConfirmationMessage { get; }
+    public IReadOnlyList<ActionInputViewModel> Inputs { get; }
+    public bool HasInputs => Inputs.Count > 0;
+    public string ButtonLabel => HasInputs ? "执行" : Name;
+    public string AccessibleName => $"执行：{Name}";
+    public bool CanEdit => !IsBusy && !_token.IsCancellationRequested;
+    public bool CanInvoke => CanEdit && Inputs.All(input => input.IsValid);
+
+    [RelayCommand(CanExecute = nameof(CanInvoke))]
+    private async Task InvokeAsync()
+    {
+        if (!CanInvoke)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        Error = null;
+        Output = null;
+        try
+        {
+            JsonElement[] input = Inputs.Select(item => item.SerializeValue()).ToArray();
+            if (!await _confirm(this, _token))
+            {
+                return;
+            }
+
+            _token.ThrowIfCancellationRequested();
+            JsonElement result = await _controller.InvokeAsync(_device, Key, input, _token);
+            _token.ThrowIfCancellationRequested();
+            bool isEmpty = result.ValueKind switch
+            {
+                JsonValueKind.Null or JsonValueKind.Undefined => true,
+                JsonValueKind.String => string.IsNullOrEmpty(result.GetString()),
+                JsonValueKind.Array => result.GetArrayLength() == 0,
+                JsonValueKind.Object => !result.EnumerateObject().Any(),
+                _ => false
+            };
+            Output = isEmpty ? "已执行，无返回" : result.ToString();
+        }
+        catch (OperationCanceledException) when (_token.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            if (!_token.IsCancellationRequested)
+            {
+                Error = DeviceErrorText.Describe(ex);
+            }
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void OnInputPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ActionInputViewModel.IsValid))
+        {
+            OnPropertyChanged(nameof(CanInvoke));
+            InvokeCommand.NotifyCanExecuteChanged();
+        }
+    }
+}

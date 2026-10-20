@@ -350,7 +350,7 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
             // Some gateway-backed writes answer 1 instead of 0 while still accepting the value.
             if (code is not (0 or 1))
             {
-                throw CreateException(entry, path, code);
+                throw CreateException(entry, path, code, isDeviceError: true);
             }
         }
     }
@@ -370,7 +370,11 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
     private static MiHomeException ProtocolError(string path, string detail)
         => new(ProtocolErrorCode, $"Unexpected Mi Home cloud response from '{path}': {detail}");
 
-    private static MiHomeException CreateException(JsonElement response, string path, int code)
+    private static MiHomeException CreateException(
+        JsonElement response,
+        string path,
+        int code,
+        bool isDeviceError = false)
     {
         var description = ReadString(response, "description");
         var message = ReadString(response, "message");
@@ -380,7 +384,7 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
         }
 
         message ??= $"Mi Home cloud request '{path}' failed with code {code}.";
-        return new MiHomeException(code, message, description);
+        return new MiHomeException(code, message, description, isDeviceError);
     }
 
     private static void AppendHomes(
@@ -512,6 +516,12 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
             var room = roomNames.TryGetValue(did, out var roomName) ? roomName : null;
             var (parentDid, channelSiid) = ReadSplit(item);
 
+            var specType = ReadString(item, "spec_type");
+            if (string.IsNullOrWhiteSpace(specType))
+            {
+                specType = null;
+            }
+
             devices.Add(new MiDevice(
                 did,
                 model,
@@ -519,7 +529,8 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
                 room,
                 ReadOnline(item),
                 parentDid,
-                channelSiid));
+                channelSiid,
+                specType));
         }
     }
 
@@ -609,7 +620,7 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
         var code = ReadRequiredInt32(result, path);
         if (code != 0)
         {
-            throw CreateException(result, path, code);
+            throw CreateException(result, path, code, isDeviceError: true);
         }
 
         return result.TryGetProperty("out", out var output) ? output.Clone() : EmptyArrayElement();

@@ -219,6 +219,7 @@ public sealed class MiHomeCloudClientTests
 
         Assert.Equal(MiHomeCloudClient.ProtocolErrorCode, error.Code);
         Assert.Contains("cursor is empty", error.Message);
+        Assert.False(error.IsDeviceError);
         Assert.Equal(1, handler.RequestCount);
     }
 
@@ -236,6 +237,7 @@ public sealed class MiHomeCloudClientTests
 
         Assert.Equal(MiHomeCloudClient.ProtocolErrorCode, error.Code);
         Assert.Contains("'b'", error.Message);
+        Assert.False(error.IsDeviceError);
         Assert.Equal(2, handler.RequestCount);
     }
 
@@ -259,6 +261,7 @@ public sealed class MiHomeCloudClientTests
         Assert.Equal(MiHomeCloudClient.ProtocolErrorCode, error.Code);
         Assert.Contains("'a'", error.Message);
         Assert.Contains("already used", error.Message);
+        Assert.False(error.IsDeviceError);
         Assert.Equal(3, handler.RequestCount);
     }
 
@@ -358,6 +361,29 @@ public sealed class MiHomeCloudClientTests
         Assert.Equal("1234", device.ControlDid);
     }
 
+    [Fact]
+    public async Task GetDevicesAsyncParsesSpecType()
+    {
+        const string response = """
+            {"code":0,"result":{"device_info":[
+            {"did":"a","model":"m","name":"A","isOnline":true,
+            "spec_type":"urn:miot-spec-v2:device:switch:0000A003:foo:1"},
+            {"did":"b","model":"m","name":"B","isOnline":true},
+            {"did":"c","model":"m","name":"C","isOnline":true,"spec_type":""}],
+            "has_more":false}}
+            """;
+        var client = CreateClient(new StubHttpMessageHandler(response));
+
+        var devices = await client.GetDevicesAsync(
+            _session,
+            new MiHome("1001", "Home", "9001", false, []),
+            CancellationToken.None);
+
+        Assert.Equal("urn:miot-spec-v2:device:switch:0000A003:foo:1", devices[0].SpecType);
+        Assert.Null(devices[1].SpecType);
+        Assert.Null(devices[2].SpecType);
+    }
+
     [Theory]
     [InlineData("""{"code":0,"result":[{"siid":2,"piid":1,"code":0,"value":true},{"siid":2,"piid":2,"code":-1},{"siid":3,"piid":1,"value":42}]}""")]
     [InlineData("""{"code":0,"result":{"result":[{"siid":2,"piid":1,"code":0,"value":true},{"siid":2,"piid":2,"code":-1},{"siid":3,"piid":1,"value":42}]}}""")]
@@ -413,6 +439,7 @@ public sealed class MiHomeCloudClientTests
             Assert.Equal(entryCode, error.Code);
             Assert.Equal("rejected", error.Message);
             Assert.Equal("detail", error.Description);
+            Assert.True(error.IsDeviceError);
         }
 
         Assert.Equal(
@@ -434,6 +461,26 @@ public sealed class MiHomeCloudClientTests
             CancellationToken.None));
 
         Assert.Equal(1, error.Code);
+        Assert.False(error.IsDeviceError);
+    }
+
+    [Fact]
+    public async Task SetPropertyAsyncMarksSplitChannelEntryCodeAsDeviceError()
+    {
+        const string response = """
+            {"code":0,"result":[{"did":"2000420370","siid":4,"piid":1,"code":-704053100}]}
+            """;
+        var client = CreateClient(new StubHttpMessageHandler(response));
+
+        var error = await Assert.ThrowsAsync<MiHomeException>(() => client.SetPropertyAsync(
+            _session,
+            "2000420370.s4",
+            new MiPropertyKey(4, 1),
+            JsonSerializer.SerializeToElement(true),
+            CancellationToken.None));
+
+        Assert.Equal(-704053100, error.Code);
+        Assert.True(error.IsDeviceError);
     }
 
     [Theory]
@@ -451,6 +498,7 @@ public sealed class MiHomeCloudClientTests
             CancellationToken.None));
 
         Assert.Equal(MiHomeCloudClient.ProtocolErrorCode, error.Code);
+        Assert.False(error.IsDeviceError);
     }
 
     [Fact]
@@ -506,6 +554,7 @@ public sealed class MiHomeCloudClientTests
         Assert.Equal(-3, error.Code);
         Assert.Equal("busy", error.Message);
         Assert.Equal("device busy", error.Description);
+        Assert.True(error.IsDeviceError);
     }
 
     [Fact]
@@ -536,6 +585,7 @@ public sealed class MiHomeCloudClientTests
         Assert.Equal(-6, error.Code);
         Assert.Equal("login required", error.Message);
         Assert.Equal("auth failed", error.Description);
+        Assert.False(error.IsDeviceError);
     }
 
     [Theory]
@@ -549,6 +599,7 @@ public sealed class MiHomeCloudClientTests
             () => client.GetHomesAsync(_session, CancellationToken.None));
 
         Assert.Equal(MiHomeCloudClient.ProtocolErrorCode, error.Code);
+        Assert.False(error.IsDeviceError);
     }
 
     [Fact]
@@ -563,6 +614,7 @@ public sealed class MiHomeCloudClientTests
         Assert.Equal(503, error.Code);
         Assert.Contains("503", error.Message);
         Assert.DoesNotContain("login required", error.Message);
+        Assert.False(error.IsDeviceError);
     }
 
     [Fact]
@@ -576,6 +628,7 @@ public sealed class MiHomeCloudClientTests
 
         Assert.Equal(403, error.Code);
         Assert.Contains("session may have expired", error.Message);
+        Assert.False(error.IsDeviceError);
     }
 
     [Fact]

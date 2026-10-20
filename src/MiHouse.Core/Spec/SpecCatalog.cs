@@ -50,6 +50,13 @@ public sealed class SpecCatalog : ISpecCatalog
         return await GetOrFetchSpecAsync(urn, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <inheritdoc />
+    public Task<SpecInstance?> GetAsync(string urn, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(urn);
+        return GetOrFetchSpecAsync(urn, cancellationToken);
+    }
+
     private async Task<Dictionary<string, string>> GetModelTypesAsync(CancellationToken cancellationToken)
     {
         var modelTypes = Volatile.Read(ref _modelTypes);

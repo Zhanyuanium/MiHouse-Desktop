@@ -8,6 +8,8 @@ namespace MiHouse.App.Views;
 
 public sealed partial class DevicesPage : Page
 {
+    private bool _isActionDialogOpen;
+
     public DevicesPage(DevicesViewModel viewModel)
     {
         InitializeComponent();
@@ -18,9 +20,53 @@ public sealed partial class DevicesPage : Page
 
     public DevicesViewModel ViewModel { get; }
 
-    private async void OnLoaded(object sender, RoutedEventArgs e) => await ViewModel.RefreshCommand.ExecuteAsync(null);
+    private async void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        ViewModel.ConfirmAction = ConfirmActionAsync;
+        await ViewModel.RefreshCommand.ExecuteAsync(null);
+    }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e) => ViewModel.Stop();
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        ViewModel.ConfirmAction = null;
+        ViewModel.Stop();
+    }
+
+    private async Task<bool> ConfirmActionAsync(ActionRowViewModel action, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (!IsLoaded || XamlRoot is null)
+        {
+            throw new InvalidOperationException("无法显示确认对话框，操作未执行");
+        }
+
+        if (_isActionDialogOpen)
+        {
+            throw new InvalidOperationException("请先完成当前操作的确认");
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = action.Name,
+            Content = new TextBlock { Text = action.ConfirmationMessage, TextWrapping = TextWrapping.Wrap },
+            PrimaryButtonText = "执行",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close
+        };
+        _isActionDialogOpen = true;
+        try
+        {
+            using CancellationTokenRegistration registration = token.Register(() => DispatcherQueue.TryEnqueue(() => dialog.Hide()));
+            ContentDialogResult result = await dialog.ShowAsync();
+            token.ThrowIfCancellationRequested();
+            return result == ContentDialogResult.Primary;
+        }
+        finally
+        {
+            _isActionDialogOpen = false;
+        }
+    }
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
     {
@@ -55,7 +101,7 @@ public sealed partial class DevicesPage : Page
 
     private void OnKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (e.Key == VirtualKey.Escape && ViewModel.HasSelection)
+        if (e.Key == VirtualKey.Escape && !_isActionDialogOpen && ViewModel.HasSelection)
         {
             ViewModel.CloseDetailsCommand.Execute(null);
             DeviceList.Focus(FocusState.Programmatic);

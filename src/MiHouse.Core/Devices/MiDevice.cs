@@ -16,6 +16,9 @@ namespace MiHouse.Core.Devices;
 /// <param name="ChannelSiid">
 /// Service id on the parent that controls this split sub-device, when the cloud reports one.
 /// </param>
+/// <param name="SpecType">
+/// Exact miot-spec URN reported by the cloud for this device, when available.
+/// </param>
 public sealed record MiDevice(
     string Did,
     string Model,
@@ -23,7 +26,8 @@ public sealed record MiDevice(
     string? RoomName,
     bool IsOnline,
     string? ParentDid = null,
-    int? ChannelSiid = null)
+    int? ChannelSiid = null,
+    string? SpecType = null)
 {
     /// <summary>
     /// Device id to use for control requests: the parent for split sub-devices, otherwise

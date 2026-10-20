@@ -198,6 +198,64 @@ public sealed class SpecCatalogTests
     }
 
     [Fact]
+    public async Task GetAsync_KnownUrn_ResolvesAndCaches()
+    {
+        var handler = new StubHandler(request => IsIndexRequest(request)
+            ? JsonResponse(_indexJson)
+            : JsonResponse(_specJson));
+        var catalog = new SpecCatalog(new HttpClient(handler));
+
+        var first = await catalog.GetAsync(_deviceType, CancellationToken.None);
+        var second = await catalog.GetAsync(_deviceType, CancellationToken.None);
+
+        var instance = Assert.IsType<SpecInstance>(first);
+        Assert.Equal(_deviceType, instance.Type);
+        Assert.Same(first, second);
+        Assert.Equal(1, handler.CountRequests("/instance"));
+        Assert.Equal(0, handler.CountRequests("/instances"));
+    }
+
+    [Fact]
+    public async Task GetAsync_UnknownUrn_ReturnsNull()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+        var catalog = new SpecCatalog(new HttpClient(handler));
+
+        var spec = await catalog.GetAsync("urn:miot-spec-v2:device:light:0000A001:missing:1", CancellationToken.None);
+
+        Assert.Null(spec);
+        Assert.Equal(1, handler.CountRequests("/instance"));
+    }
+
+    [Fact]
+    public async Task GetAsync_MalformedBody_ThrowsMiSpecException()
+    {
+        var handler = new StubHandler(_ => JsonResponse("""{ "type": "urn:miot-spec-v2:device:light:0000A001:test-one:1", "services": ["""));
+        var catalog = new SpecCatalog(new HttpClient(handler));
+
+        var exception = await Assert.ThrowsAsync<MiSpecException>(
+            () => catalog.GetAsync(_deviceType, CancellationToken.None));
+
+        Assert.IsType<JsonException>(exception.InnerException);
+    }
+
+    [Fact]
+    public async Task GetAsync_AndGetForModelAsync_ShareCache()
+    {
+        var handler = new StubHandler(request => IsIndexRequest(request)
+            ? JsonResponse(_indexJson)
+            : JsonResponse(_specJson));
+        var catalog = new SpecCatalog(new HttpClient(handler));
+
+        var fromModel = await catalog.GetForModelAsync("test.light.one", CancellationToken.None);
+        var fromUrn = await catalog.GetAsync(_deviceType, CancellationToken.None);
+
+        Assert.NotNull(fromModel);
+        Assert.Same(fromModel, fromUrn);
+        Assert.Equal(1, handler.CountRequests("/instance"));
+    }
+
+    [Fact]
     public async Task GetForModelAsync_DuplicateModels_HighestVersionWinsWhenNewerComesFirst()
     {
         var index = BuildIndexJson(

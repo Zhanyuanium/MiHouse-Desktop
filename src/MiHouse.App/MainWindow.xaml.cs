@@ -59,7 +59,7 @@ public sealed partial class MainWindow : Window
     private void ShowDevices(MiHomeSession session)
     {
         StopCurrentPage();
-        var viewModel = new DevicesViewModel(_cloud, _specs, _credentials, session);
+        var viewModel = new DevicesViewModel(_cloud, new DeviceController(_cloud, _specs, session), _credentials, session);
         viewModel.SignedOut += ShowLogin;
         RootFrame.Content = new DevicesPage(viewModel);
     }

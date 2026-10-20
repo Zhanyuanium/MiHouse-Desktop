@@ -134,6 +134,8 @@
                         Visibility="{Binding HasValue, Converter={StaticResource BooleanVisibilityConverter}, ConverterParameter=Inverse}" />
                       <TextBlock Text="{Binding TextValue}" Style="{StaticResource SecondaryTextStyle}" AutomationProperties.Name="当前属性值"
                         Visibility="{Binding HasValue, Converter={StaticResource BooleanVisibilityConverter}}" />
+                      <TextBlock Text="已写入，当前值未确认" Style="{StaticResource SecondaryTextStyle}" AutomationProperties.LiveSetting="Polite"
+                        Visibility="{Binding IsWriteUnconfirmed, Converter={StaticResource BooleanVisibilityConverter}}" />
                       <ToggleSwitch IsOn="{Binding BoolValue, Mode=TwoWay}" IsEnabled="{Binding CanEdit}"
                         OnContent="开启" OffContent="关闭" AutomationProperties.Name="{Binding Name}"
                         Visibility="{Binding IsBoolean, Converter={StaticResource BooleanVisibilityConverter}}" />
@@ -163,6 +165,67 @@
                   </Border>
                 </DataTemplate>
               </ListView.ItemTemplate>
+              <ListView.Footer>
+                <ItemsControl ItemsSource="{Binding ActionServices}" HorizontalContentAlignment="Stretch" AutomationProperties.Name="设备操作">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <StackPanel Spacing="8" Margin="0,16,0,0">
+                        <TextBlock Text="{Binding Name}" Style="{ThemeResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
+                        <ItemsControl ItemsSource="{Binding Actions}" HorizontalContentAlignment="Stretch">
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                              <Border Style="{StaticResource PropertySurfaceStyle}">
+                                <StackPanel Spacing="12">
+                                  <TextBlock Text="{Binding Name}" Style="{ThemeResource BodyStrongTextBlockStyle}" TextWrapping="Wrap"
+                                    Visibility="{Binding HasInputs, Converter={StaticResource BooleanVisibilityConverter}}" />
+                                  <ItemsControl ItemsSource="{Binding Inputs}" IsEnabled="{Binding CanEdit}" HorizontalContentAlignment="Stretch">
+                                    <ItemsControl.ItemTemplate>
+                                      <DataTemplate>
+                                        <StackPanel Margin="0,0,0,8">
+                                          <ToggleSwitch Header="{Binding Name}" IsOn="{Binding BoolValue, Mode=TwoWay}"
+                                            OnContent="开启" OffContent="关闭" AutomationProperties.Name="{Binding Name}"
+                                            Visibility="{Binding IsBoolean, Converter={StaticResource BooleanVisibilityConverter}}" />
+                                          <ComboBox Header="{Binding Name}" ItemsSource="{Binding Options}" SelectedItem="{Binding SelectedOption, Mode=TwoWay}"
+                                            PlaceholderText="选择值" HorizontalAlignment="Stretch" AutomationProperties.Name="{Binding Name}"
+                                            Visibility="{Binding IsChoice, Converter={StaticResource BooleanVisibilityConverter}}">
+                                            <ComboBox.ItemTemplate>
+                                              <DataTemplate x:DataType="spec:SpecValueList">
+                                                <TextBlock Text="{x:Bind Description}" />
+                                              </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                          </ComboBox>
+                                          <NumberBox Header="{Binding Name}" Value="{Binding NumericValue, Mode=TwoWay}"
+                                            Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" SmallChange="{Binding Step}"
+                                            SpinButtonPlacementMode="Compact" HorizontalAlignment="Stretch" AutomationProperties.Name="{Binding Name}"
+                                            Visibility="{Binding IsNumber, Converter={StaticResource BooleanVisibilityConverter}}" />
+                                          <TextBox Header="{Binding Name}" Text="{Binding IntegerText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                            HorizontalAlignment="Stretch" AutomationProperties.Name="{Binding Name}"
+                                            Visibility="{Binding Is64BitInteger, Converter={StaticResource BooleanVisibilityConverter}}" />
+                                          <TextBlock Text="{Binding ValidationHint}" Style="{StaticResource SecondaryTextStyle}" AutomationProperties.LiveSetting="Polite"
+                                            Visibility="{Binding Is64BitInteger, Converter={StaticResource BooleanVisibilityConverter}}" />
+                                          <TextBox Header="{Binding Name}" Text="{Binding StringValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                            HorizontalAlignment="Stretch" AutomationProperties.Name="{Binding Name}"
+                                            Visibility="{Binding IsString, Converter={StaticResource BooleanVisibilityConverter}}" />
+                                        </StackPanel>
+                                      </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                  </ItemsControl>
+                                  <Button Content="{Binding ButtonLabel}" Command="{Binding InvokeCommand}" AutomationProperties.Name="{Binding AccessibleName}" />
+                                  <ProgressBar IsIndeterminate="True" Visibility="{Binding IsBusy, Converter={StaticResource BooleanVisibilityConverter}}"
+                                    AutomationProperties.Name="正在执行操作" />
+                                  <TextBlock Text="{Binding Output}" Style="{StaticResource SecondaryTextStyle}" AutomationProperties.LiveSetting="Polite" />
+                                  <InfoBar IsOpen="{Binding Error, Converter={StaticResource HasTextConverter}}" IsClosable="False"
+                                    Severity="Error" Message="{Binding Error}" AutomationProperties.LiveSetting="Polite" />
+                                </StackPanel>
+                              </Border>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </StackPanel>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ListView.Footer>
             </ListView>
           </Grid>
         </SplitView.Pane>

@@ -61,4 +61,9 @@ public interface ISpecCatalog
     /// published miot-spec definition.
     /// </summary>
     Task<SpecInstance?> GetForModelAsync(string model, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns the spec for an exact miot-spec URN, or <see langword="null"/> when it is unknown.
+    /// </summary>
+    Task<SpecInstance?> GetAsync(string urn, CancellationToken cancellationToken);
 }
