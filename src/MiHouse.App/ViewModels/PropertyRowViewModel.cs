@@ -15,6 +15,7 @@ public sealed partial class PropertyRowViewModel : ObservableObject
     private readonly MiHomeSession _session;
     private readonly string _did;
     private readonly CancellationToken _token;
+    private bool _isUpdatingValue = true;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ApplyCommand))]
@@ -32,10 +33,18 @@ public sealed partial class PropertyRowViewModel : ObservableObject
     public partial double NumericValue { get; set; }
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ApplyCommand))]
     public partial SpecValueList? SelectedOption { get; set; }
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ApplyCommand))]
+    [NotifyPropertyChangedFor(nameof(HasDisplayValue))]
     public partial bool HasValue { get; set; }
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ApplyCommand))]
+    [NotifyPropertyChangedFor(nameof(HasDisplayValue))]
+    public partial bool HasPendingChanges { get; set; }
 
     [ObservableProperty]
     public partial string TextValue { get; set; }
@@ -47,7 +56,7 @@ public sealed partial class PropertyRowViewModel : ObservableObject
         _session = session;
         _did = did;
         _token = token;
-        TextValue = "值不可用";
+        TextValue = string.Empty;
         Property = property;
         ServiceName = serviceName;
         Key = new MiPropertyKey(siid, property.Iid);
@@ -56,6 +65,8 @@ public sealed partial class PropertyRowViewModel : ObservableObject
         {
             ReadValue(value.Value);
         }
+
+        _isUpdatingValue = false;
     }
 
     public SpecProperty Property { get; }
@@ -76,8 +87,9 @@ public sealed partial class PropertyRowViewModel : ObservableObject
     public double Maximum => Property.Range?.Max ?? 1;
     public double Step => Property.Range is { Step: > 0 } range ? range.Step : 1;
     public string NumericText => NumericValue.ToString("0.###", CultureInfo.CurrentCulture);
+    public bool HasDisplayValue => HasValue || HasPendingChanges;
 
-    private bool CanApply() => CanEdit;
+    private bool CanApply() => CanEdit && HasDisplayValue && (!IsChoice || SelectedOption is not null);
 
     [RelayCommand(CanExecute = nameof(CanApply))]
     private async Task ApplyAsync()
@@ -118,18 +130,41 @@ public sealed partial class PropertyRowViewModel : ObservableObject
 
     private void ReadValue(JsonElement value)
     {
-        HasValue = true;
-        TextValue = value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.ToString();
-        if (value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        bool wasUpdating = _isUpdatingValue;
+        _isUpdatingValue = true;
+        try
         {
-            BoolValue = value.GetBoolean();
-            TextValue = BoolValue ? "开启" : "关闭";
+            TextValue = value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.ToString();
+            if (value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            {
+                BoolValue = value.GetBoolean();
+                TextValue = BoolValue ? "开启" : "关闭";
+            }
+            else if (value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out double number))
+            {
+                NumericValue = number;
+                SelectedOption = Options.FirstOrDefault(option => option.Value == number);
+                TextValue = SelectedOption?.Description ?? NumericText;
+            }
+
+            HasValue = true;
+            HasPendingChanges = false;
         }
-        else if (value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out double number))
+        finally
         {
-            NumericValue = number;
-            SelectedOption = Options.FirstOrDefault(option => option.Value == number);
-            TextValue = SelectedOption?.Description ?? NumericText;
+            _isUpdatingValue = wasUpdating;
         }
     }
+
+    private void MarkEdited()
+    {
+        if (!_isUpdatingValue)
+        {
+            HasPendingChanges = true;
+        }
+    }
+
+    partial void OnBoolValueChanged(bool value) => MarkEdited();
+    partial void OnNumericValueChanged(double value) => MarkEdited();
+    partial void OnSelectedOptionChanged(SpecValueList? value) => MarkEdited();
 }

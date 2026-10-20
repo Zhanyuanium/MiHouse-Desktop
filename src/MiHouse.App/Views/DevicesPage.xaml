@@ -121,11 +121,10 @@
                         <TextBlock Text="{Binding ServiceName}" Style="{ThemeResource CaptionTextBlockStyle}"
                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
                         <TextBlock Text="{Binding Name}" Style="{ThemeResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
-                        <Border Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="4" Padding="8,4"
-                          HorizontalAlignment="Left" Visibility="{Binding HasValue, Converter={StaticResource BooleanVisibilityConverter}, ConverterParameter=Inverse}">
-                          <TextBlock Text="本地/云端" Style="{ThemeResource CaptionTextBlockStyle}" ToolTipService.ToolTip="当前值不可用；未判断连接方式" />
-                        </Border>
-                        <TextBlock Text="{Binding TextValue}" Style="{StaticResource SecondaryTextStyle}" AutomationProperties.Name="当前属性值" />
+                        <TextBlock Text="值不可用" Style="{StaticResource SecondaryTextStyle}"
+                          Visibility="{Binding HasValue, Converter={StaticResource BooleanVisibilityConverter}, ConverterParameter=Inverse}" />
+                        <TextBlock Text="{Binding TextValue}" Style="{StaticResource SecondaryTextStyle}" AutomationProperties.Name="当前属性值"
+                          Visibility="{Binding HasValue, Converter={StaticResource BooleanVisibilityConverter}}" />
                         <ToggleSwitch IsOn="{Binding BoolValue, Mode=TwoWay}" IsEnabled="{Binding CanEdit}"
                           OnContent="开启" OffContent="关闭" AutomationProperties.Name="{Binding Name}"
                           Visibility="{Binding IsBoolean, Converter={StaticResource BooleanVisibilityConverter}}" />
@@ -142,7 +141,8 @@
                           <Slider Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" StepFrequency="{Binding Step}"
                             TickFrequency="{Binding Step}" SnapsTo="StepValues" Value="{Binding NumericValue, Mode=TwoWay}"
                             IsEnabled="{Binding CanEdit}" AutomationProperties.Name="{Binding Name}" />
-                          <TextBlock Text="{Binding NumericText}" HorizontalAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}" />
+                          <TextBlock Text="{Binding NumericText}" HorizontalAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}"
+                            Visibility="{Binding HasDisplayValue, Converter={StaticResource BooleanVisibilityConverter}}" />
                         </StackPanel>
                         <Button Content="应用" Command="{Binding ApplyCommand}" AutomationProperties.Name="{Binding ApplyLabel}"
                           Visibility="{Binding IsEditable, Converter={StaticResource BooleanVisibilityConverter}}" />

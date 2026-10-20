@@ -206,19 +206,22 @@ public sealed partial class DevicesViewModel : ObservableObject
                 return;
             }
 
-            MiPropertyKey[] keys = spec.Services.SelectMany(service => service.Properties
+            SpecService[] services = spec.Services
+                .Where(service => row.Device.ChannelSiid is null || service.Iid == row.Device.ChannelSiid)
+                .ToArray();
+            MiPropertyKey[] keys = services.SelectMany(service => service.Properties
                 .Where(property => property.Readable)
                 .Select(property => new MiPropertyKey(service.Iid, property.Iid))).ToArray();
             IReadOnlyList<MiPropertyValue> values = keys.Length == 0 ? [] :
-                await _cloud.GetPropertiesAsync(_session, row.Device.Did, keys, token);
+                await _cloud.GetPropertiesAsync(_session, row.Device.ControlDid, keys, token);
             token.ThrowIfCancellationRequested();
-            foreach (SpecService service in spec.Services)
+            foreach (SpecService service in services)
             {
                 foreach (SpecProperty property in service.Properties.Where(property => property.Readable || property.Writable || property.Notifiable))
                 {
                     MiPropertyKey key = new(service.Iid, property.Iid);
                     MiPropertyValue? current = values.Where(value => value.Key == key).Select(value => (MiPropertyValue?)value).FirstOrDefault();
-                    Properties.Add(new PropertyRowViewModel(_cloud, _session, row.Device.Did, service.Description,
+                    Properties.Add(new PropertyRowViewModel(_cloud, _session, row.Device.ControlDid, service.Description,
                         service.Iid, property, current?.Value, token));
                 }
             }

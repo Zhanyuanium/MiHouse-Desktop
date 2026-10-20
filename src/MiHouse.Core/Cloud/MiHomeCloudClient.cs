@@ -510,8 +510,16 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
 
             // The cloud sends no room on devices; membership comes from the home's rooms.
             var room = roomNames.TryGetValue(did, out var roomName) ? roomName : null;
+            var (parentDid, channelSiid) = ReadSplit(item);
 
-            devices.Add(new MiDevice(did, model, name, room, ReadOnline(item)));
+            devices.Add(new MiDevice(
+                did,
+                model,
+                name,
+                room,
+                ReadOnline(item),
+                parentDid,
+                channelSiid));
         }
     }
 
@@ -631,6 +639,31 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
         };
     }
 
+    private static (string? ParentDid, int? ChannelSiid) ReadSplit(JsonElement device)
+    {
+        if (!device.TryGetProperty("extra", out var extra)
+            || extra.ValueKind != JsonValueKind.Object
+            || !extra.TryGetProperty("split", out var split)
+            || split.ValueKind != JsonValueKind.Object)
+        {
+            return (null, null);
+        }
+
+        var parentDid = split.TryGetProperty("parentId", out var parent)
+            ? NormalizeIdentifier(parent)
+            : null;
+        if (string.IsNullOrEmpty(parentDid))
+        {
+            parentDid = null;
+        }
+
+        var channelSiid = split.TryGetProperty("moduleId", out var module)
+            ? ReadInt32Value(module)
+            : null;
+
+        return (parentDid, channelSiid);
+    }
+
     private static bool ReadBoolean(JsonElement item, string name)
     {
         if (!item.TryGetProperty(name, out var value))
@@ -655,6 +688,18 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
         {
             JsonValueKind.String => element.GetString(),
             JsonValueKind.Number => element.GetRawText(),
+            _ => null,
+        };
+
+    private static int? ReadInt32Value(JsonElement value)
+        => value.ValueKind switch
+        {
+            JsonValueKind.Number when value.TryGetInt32(out var number) => number,
+            JsonValueKind.String when int.TryParse(
+                value.GetString(),
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var number) => number,
             _ => null,
         };
 

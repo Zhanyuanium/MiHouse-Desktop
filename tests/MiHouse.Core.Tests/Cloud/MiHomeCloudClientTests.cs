@@ -298,6 +298,66 @@ public sealed class MiHomeCloudClientTests
         Assert.Equal("First", device.RoomName);
     }
 
+    [Fact]
+    public async Task GetDevicesAsyncParsesSplitDeviceControlTarget()
+    {
+        const string response = """
+            {"code":0,"result":{"device_info":[
+            {"did":"2000420370.s4","model":"m.switch","name":"Channel 4","isOnline":true,
+            "extra":{"split":{"parentId":"2000420370","moduleId":4,"channel":[1]}}},
+            {"did":"normal-1","model":"m.normal","name":"Normal","isOnline":false},
+            {"did":"split-absent","model":"m","name":"Split Absent","isOnline":true,"extra":{"other":1}},
+            {"did":"split-null","model":"m","name":"Split Null","isOnline":true,"extra":{"split":null}}],
+            "has_more":false}}
+            """;
+        var client = CreateClient(new StubHttpMessageHandler(response));
+
+        var devices = await client.GetDevicesAsync(
+            _session,
+            new MiHome("1001", "Home", "9001", false, []),
+            CancellationToken.None);
+
+        Assert.Equal(4, devices.Count);
+
+        Assert.Equal("2000420370", devices[0].ParentDid);
+        Assert.Equal(4, devices[0].ChannelSiid);
+        Assert.Equal("2000420370", devices[0].ControlDid);
+
+        Assert.Null(devices[1].ParentDid);
+        Assert.Null(devices[1].ChannelSiid);
+        Assert.Equal("normal-1", devices[1].ControlDid);
+
+        Assert.Null(devices[2].ParentDid);
+        Assert.Null(devices[2].ChannelSiid);
+        Assert.Equal("split-absent", devices[2].ControlDid);
+
+        Assert.Null(devices[3].ParentDid);
+        Assert.Null(devices[3].ChannelSiid);
+        Assert.Equal("split-null", devices[3].ControlDid);
+    }
+
+    [Fact]
+    public async Task GetDevicesAsyncParsesStringModuleIdAndNumericParentId()
+    {
+        const string response = """
+            {"code":0,"result":{"device_info":[
+            {"did":"a.s2","model":"m","name":"A","isOnline":true,
+            "extra":{"split":{"parentId":1234,"moduleId":"2"}}}],
+            "has_more":false}}
+            """;
+        var client = CreateClient(new StubHttpMessageHandler(response));
+
+        var device = Assert.Single(await client.GetDevicesAsync(
+            _session,
+            new MiHome("1001", "Home", "9001", false, []),
+            CancellationToken.None));
+
+        Assert.Equal("a.s2", device.Did);
+        Assert.Equal("1234", device.ParentDid);
+        Assert.Equal(2, device.ChannelSiid);
+        Assert.Equal("1234", device.ControlDid);
+    }
+
     [Theory]
     [InlineData("""{"code":0,"result":[{"siid":2,"piid":1,"code":0,"value":true},{"siid":2,"piid":2,"code":-1},{"siid":3,"piid":1,"value":42}]}""")]
     [InlineData("""{"code":0,"result":{"result":[{"siid":2,"piid":1,"code":0,"value":true},{"siid":2,"piid":2,"code":-1},{"siid":3,"piid":1,"value":42}]}}""")]
