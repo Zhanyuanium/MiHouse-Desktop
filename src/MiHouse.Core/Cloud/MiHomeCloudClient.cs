@@ -15,9 +15,10 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
 {
     internal const int ProtocolErrorCode = -1;
     private const string _startMarker = "&&&START&&&";
-    private const string _deviceListPath = "home/device_list";
-    private const string _deviceListPayload =
-        """{"getVirtualModel":true,"getHuamiDevices":1,"get_split_device":false,"support_smart_home":true}""";
+    private const string _homesPath = "v2/homeroom/gethome";
+    private const string _homesPayload =
+        """{"limit":300,"fetch_share":true,"fetch_share_dev":true,"fetch_cariot":true,"plat_form":0,"app_ver":9,"fg":true}""";
+    private const string _homeDeviceListPath = "v2/home/home_device_list";
 
     private readonly HttpClient _httpClient;
     private readonly MiHomeRequestSigner _signer;
@@ -41,17 +42,91 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<MiDevice>> GetDevicesAsync(
+    public async Task<IReadOnlyList<MiHome>> GetHomesAsync(
         MiHomeSession session,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        var response = await PostAsync(session, _deviceListPath, _deviceListPayload, cancellationToken)
+        // has_more/max_id are deliberately ignored: the cloud caps gethome at 300 homes per
+        // response, so accounts above that limit only see the first page.
+        var response = await PostAsync(session, _homesPath, _homesPayload, cancellationToken)
             .ConfigureAwait(false);
-        EnsureSuccess(response, _deviceListPath);
+        EnsureSuccess(response, _homesPath);
 
-        return ParseDevices(response);
+        if (!response.TryGetProperty("result", out var result) || result.ValueKind != JsonValueKind.Object)
+        {
+            return [];
+        }
+
+        var homes = new List<MiHome>();
+
+        // Array placement, not shareflag, decides whether a home is shared.
+        AppendHomes(result, "homelist", isShared: false, homes);
+        AppendHomes(result, "share_home_list", isShared: true, homes);
+
+        return homes;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<MiDevice>> GetDevicesAsync(
+        MiHomeSession session,
+        MiHome home,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(home);
+
+        var roomNames = BuildRoomLookup(home);
+        var devices = new List<MiDevice>();
+        var seenStartDids = new HashSet<string>(StringComparer.Ordinal);
+        var startDid = string.Empty;
+
+        while (seenStartDids.Add(startDid))
+        {
+            var payload = BuildHomeDeviceListPayload(home, startDid);
+            var response = await PostAsync(session, _homeDeviceListPath, payload, cancellationToken)
+                .ConfigureAwait(false);
+            EnsureSuccess(response, _homeDeviceListPath);
+
+            if (!response.TryGetProperty("result", out var result) || result.ValueKind != JsonValueKind.Object)
+            {
+                break;
+            }
+
+            AppendDevices(result, roomNames, devices);
+
+            if (!ReadBoolean(result, "has_more"))
+            {
+                break;
+            }
+
+            var next = ReadIdentifier(result, "max_did");
+            if (string.IsNullOrEmpty(next))
+            {
+                throw ProtocolError(
+                    _homeDeviceListPath,
+                    $"device paging cursor is empty after '{startDid}'.");
+            }
+
+            if (string.Equals(next, startDid, StringComparison.Ordinal))
+            {
+                throw ProtocolError(
+                    _homeDeviceListPath,
+                    $"device paging cursor '{next}' repeats the current cursor.");
+            }
+
+            if (seenStartDids.Contains(next))
+            {
+                throw ProtocolError(
+                    _homeDeviceListPath,
+                    $"device paging cursor '{next}' was already used; paging would loop.");
+            }
+
+            startDid = next;
+        }
+
+        return devices;
     }
 
     /// <inheritdoc />
@@ -308,18 +383,112 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
         return new MiHomeException(code, message, description);
     }
 
-    private static IReadOnlyList<MiDevice> ParseDevices(JsonElement response)
+    private static void AppendHomes(
+        JsonElement result,
+        string propertyName,
+        bool isShared,
+        List<MiHome> homes)
     {
-        if (!response.TryGetProperty("result", out var result)
-            || result.ValueKind != JsonValueKind.Object
-            || !result.TryGetProperty("list", out var list)
-            || list.ValueKind != JsonValueKind.Array)
+        if (!result.TryGetProperty(propertyName, out var list) || list.ValueKind != JsonValueKind.Array)
+        {
+            return;
+        }
+
+        foreach (var item in list.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var id = ReadIdentifier(item, "id");
+            if (string.IsNullOrEmpty(id))
+            {
+                continue;
+            }
+
+            var name = ReadString(item, "name");
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                name = $"家庭 {id}";
+            }
+
+            homes.Add(new MiHome(
+                id,
+                name,
+                ReadIdentifier(item, "uid") ?? string.Empty,
+                isShared,
+                ParseRooms(item)));
+        }
+    }
+
+    private static IReadOnlyList<MiRoom> ParseRooms(JsonElement home)
+    {
+        if (!home.TryGetProperty("roomlist", out var roomlist) || roomlist.ValueKind != JsonValueKind.Array)
         {
             return [];
         }
 
-        var devices = new List<MiDevice>(list.GetArrayLength());
-        foreach (var item in list.EnumerateArray())
+        var rooms = new List<MiRoom>(roomlist.GetArrayLength());
+        foreach (var item in roomlist.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var id = ReadIdentifier(item, "id") ?? string.Empty;
+            var name = ReadString(item, "name");
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                name = $"房间 {id}";
+            }
+
+            var deviceIds = new List<string>();
+            if (item.TryGetProperty("dids", out var dids) && dids.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var did in dids.EnumerateArray())
+                {
+                    var deviceId = NormalizeIdentifier(did);
+                    if (!string.IsNullOrEmpty(deviceId))
+                    {
+                        deviceIds.Add(deviceId);
+                    }
+                }
+            }
+
+            rooms.Add(new MiRoom(id, name, deviceIds));
+        }
+
+        return rooms;
+    }
+
+    private static Dictionary<string, string> BuildRoomLookup(MiHome home)
+    {
+        var lookup = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var room in home.Rooms)
+        {
+            foreach (var deviceId in room.DeviceIds)
+            {
+                lookup.TryAdd(deviceId, room.Name);
+            }
+        }
+
+        return lookup;
+    }
+
+    private static void AppendDevices(
+        JsonElement result,
+        IReadOnlyDictionary<string, string> roomNames,
+        List<MiDevice> devices)
+    {
+        if (!result.TryGetProperty("device_info", out var deviceInfo)
+            || deviceInfo.ValueKind != JsonValueKind.Array)
+        {
+            return;
+        }
+
+        foreach (var item in deviceInfo.EnumerateArray())
         {
             if (item.ValueKind != JsonValueKind.Object)
             {
@@ -339,16 +508,44 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
                 name = model;
             }
 
-            var room = ReadString(item, "room_name") ?? ReadString(item, "roomName");
-            if (string.IsNullOrWhiteSpace(room))
-            {
-                room = null;
-            }
+            // The cloud sends no room on devices; membership comes from the home's rooms.
+            var room = roomNames.TryGetValue(did, out var roomName) ? roomName : null;
 
             devices.Add(new MiDevice(did, model, name, room, ReadOnline(item)));
         }
+    }
 
-        return devices;
+    private static string BuildHomeDeviceListPayload(MiHome home, string startDid)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartObject();
+            WriteNumericOrString(writer, "home_id", home.Id);
+            WriteNumericOrString(writer, "home_owner", home.OwnerUserId);
+            writer.WriteNumber("limit", 300);
+            writer.WriteString("start_did", startDid);
+            writer.WriteBoolean("get_split_device", true);
+            writer.WriteBoolean("support_smart_home", true);
+            writer.WriteBoolean("get_cariot_device", true);
+            writer.WriteBoolean("get_third_device", true);
+            writer.WriteEndObject();
+        }
+
+        return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    private static void WriteNumericOrString(Utf8JsonWriter writer, string name, string value)
+    {
+        if (long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var number)
+            && number.ToString(CultureInfo.InvariantCulture) == value)
+        {
+            writer.WriteNumber(name, number);
+        }
+        else
+        {
+            writer.WriteString(name, value);
+        }
     }
 
     private static IReadOnlyList<MiPropertyValue> ParseProperties(JsonElement response)
@@ -434,20 +631,32 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
         };
     }
 
-    private static string? ReadIdentifier(JsonElement item, string name)
+    private static bool ReadBoolean(JsonElement item, string name)
     {
-        if (!item.TryGetProperty(name, out var property))
+        if (!item.TryGetProperty(name, out var value))
         {
-            return null;
+            return false;
         }
 
-        return property.ValueKind switch
+        return value.ValueKind switch
         {
-            JsonValueKind.String => property.GetString(),
-            JsonValueKind.Number => property.GetRawText(),
-            _ => null,
+            JsonValueKind.True => true,
+            JsonValueKind.Number when value.TryGetInt32(out var number) => number != 0,
+            JsonValueKind.String => value.GetString() is "1" or "true",
+            _ => false,
         };
     }
+
+    private static string? ReadIdentifier(JsonElement item, string name)
+        => item.TryGetProperty(name, out var property) ? NormalizeIdentifier(property) : null;
+
+    private static string? NormalizeIdentifier(JsonElement element)
+        => element.ValueKind switch
+        {
+            JsonValueKind.String => element.GetString(),
+            JsonValueKind.Number => element.GetRawText(),
+            _ => null,
+        };
 
     private static int? ReadInt32(JsonElement element, string name)
     {

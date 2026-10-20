@@ -9,6 +9,15 @@ using MiHouse.Core.Spec;
 namespace MiHouse.App.ViewModels;
 
 [Microsoft.UI.Xaml.Data.Bindable]
+public sealed partial class HomeRowViewModel(MiHome home)
+{
+    public MiHome Home { get; } = home;
+    public string Name => Home.Name;
+    public bool IsShared => Home.IsShared;
+    public string AccessibleName => IsShared ? $"{Name}，共享" : Name;
+}
+
+[Microsoft.UI.Xaml.Data.Bindable]
 public sealed partial class DeviceRowViewModel(MiDevice device)
 {
     public MiDevice Device { get; } = device;
@@ -35,6 +44,8 @@ public sealed partial class DevicesViewModel : ObservableObject
     private readonly MiHomeSession _session;
     private CancellationTokenSource? _listLifetime;
     private CancellationTokenSource? _selectionLifetime;
+    private bool _isUpdatingHomes;
+    private bool _isSigningOut;
 
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
@@ -52,6 +63,13 @@ public sealed partial class DevicesViewModel : ObservableObject
     public partial bool IsEmpty { get; set; }
 
     [ObservableProperty]
+    public partial bool HasNoHomes { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HeaderTitle))]
+    public partial HomeRowViewModel? SelectedHome { get; set; }
+
+    [ObservableProperty]
     public partial string? DetailMessage { get; set; }
 
     [ObservableProperty]
@@ -67,27 +85,72 @@ public sealed partial class DevicesViewModel : ObservableObject
     }
 
     public event Action? SignedOut;
+    public ObservableCollection<HomeRowViewModel> Homes { get; } = [];
     public ObservableCollection<RoomGroup> Rooms { get; } = [];
     public ObservableCollection<PropertyRowViewModel> Properties { get; } = [];
     public string AccountLabel => $"小米账号 {_session.UserId}";
+    public string HeaderTitle => SelectedHome?.Name ?? "我的设备";
+    public bool HasHomes => Homes.Count > 0;
     public bool HasSelection => SelectedDevice is not null;
 
     [RelayCommand]
-    private async Task RefreshAsync()
+    private async Task RefreshAsync() => await LoadDevicesAsync();
+
+    private async Task LoadDevicesAsync()
     {
+        if (_isSigningOut)
+        {
+            return;
+        }
+
         _listLifetime?.Cancel();
         _listLifetime?.Dispose();
         _listLifetime = new CancellationTokenSource();
         CancellationToken token = _listLifetime.Token;
         IsBusy = true;
         IsEmpty = false;
+        HasNoHomes = false;
         Error = null;
+        SelectedDevice = null;
+        Rooms.Clear();
         try
         {
-            IReadOnlyList<MiDevice> devices = await _cloud.GetDevicesAsync(_session, token);
+            if (SelectedHome is null)
+            {
+                // Initial selection belongs to this load, not a second device request.
+                _isUpdatingHomes = true;
+                try
+                {
+                    if (Homes.Count == 0)
+                    {
+                        IReadOnlyList<MiHome> homes = await _cloud.GetHomesAsync(_session, token);
+                        token.ThrowIfCancellationRequested();
+                        foreach (MiHome home in homes)
+                        {
+                            Homes.Add(new HomeRowViewModel(home));
+                        }
+
+                        OnPropertyChanged(nameof(HasHomes));
+                    }
+
+                    SelectedHome = Homes.FirstOrDefault(home => home.Home.Rooms.Any(room => room.DeviceIds.Count > 0))
+                        ?? Homes.FirstOrDefault();
+                }
+                finally
+                {
+                    _isUpdatingHomes = false;
+                }
+            }
+
+            HomeRowViewModel? selectedHome = SelectedHome;
+            if (selectedHome is null)
+            {
+                HasNoHomes = true;
+                return;
+            }
+
+            IReadOnlyList<MiDevice> devices = await _cloud.GetDevicesAsync(_session, selectedHome.Home, token);
             token.ThrowIfCancellationRequested();
-            SelectedDevice = null;
-            Rooms.Clear();
             foreach (IGrouping<string, MiDevice> room in devices.GroupBy(device =>
                 string.IsNullOrWhiteSpace(device.RoomName) ? "未分配房间" : device.RoomName).OrderBy(room => room.Key))
             {
@@ -190,16 +253,36 @@ public sealed partial class DevicesViewModel : ObservableObject
     [RelayCommand]
     private async Task SignOutAsync()
     {
+        _isSigningOut = true;
         Stop();
         SelectedDevice = null;
         Error = null;
         try
         {
             await _credentials.ClearAsync(CancellationToken.None);
+            _isUpdatingHomes = true;
+            try
+            {
+                SelectedHome = null;
+                Homes.Clear();
+            }
+            finally
+            {
+                _isUpdatingHomes = false;
+            }
+
+            OnPropertyChanged(nameof(HasHomes));
+            Rooms.Clear();
+            Properties.Clear();
+            IsEmpty = false;
+            HasNoHomes = false;
+            DetailError = null;
+            DetailMessage = null;
             SignedOut?.Invoke();
         }
         catch (Exception ex)
         {
+            _isSigningOut = false;
             Error = $"退出登录失败：{ex.Message}";
         }
     }
@@ -217,4 +300,12 @@ public sealed partial class DevicesViewModel : ObservableObject
     }
 
     partial void OnSelectedDeviceChanged(DeviceRowViewModel? value) => _ = LoadPropertiesAsync(value);
+
+    partial void OnSelectedHomeChanged(HomeRowViewModel? value)
+    {
+        if (!_isUpdatingHomes)
+        {
+            _ = LoadDevicesAsync();
+        }
+    }
 }

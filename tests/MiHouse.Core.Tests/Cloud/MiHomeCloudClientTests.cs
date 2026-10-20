@@ -14,45 +14,67 @@ public sealed class MiHomeCloudClientTests
     private const string _ssecurity = "MDEyMzQ1Njc4OWFiY2RlZg==";
     private const string _nonce = "bm9uY2UwMDE=";
     private const string _serviceToken = "service-token";
-    private const string _deviceListPayload =
-        """{"getVirtualModel":true,"getHuamiDevices":1,"get_split_device":false,"support_smart_home":true}""";
+    private const string _homesPayload =
+        """{"limit":300,"fetch_share":true,"fetch_share_dev":true,"fetch_cariot":true,"plat_form":0,"app_ver":9,"fg":true}""";
 
     private static readonly MiHomeSession _session = new("12345", _serviceToken, _ssecurity, "cn");
 
     [Fact]
-    public async Task GetDevicesAsyncSignsRequestAndMapsDevices()
+    public async Task GetHomesAsyncParsesOwnedAndSharedHomes()
     {
         const string response = """
-            &&&START&&&{"code":0,"result":{"list":[
-            {"did":"111","model":"yeelink.light.color1","name":"Lamp","room_name":"Living Room","isOnline":true},
-            {"did":"222","model":"lumi.gateway.v3","name":"Gateway","roomName":"Hall","online":1},
-            {"did":"333","model":"chuangmi.plug.v3","isOnline":false,"online":true}
-            ]}}
+            &&&START&&&{"code":0,"result":{
+            "homelist":[
+            {"id":1001,"uid":9001,"name":"Owned Home","shareflag":1,"roomlist":[
+            {"id":11,"name":"Living","dids":["a","b"]},
+            {"id":12,"dids":null},
+            {"id":"13","name":"","dids":[]}]},
+            {"id":"1002","uid":"9002","roomlist":null}],
+            "share_home_list":[
+            {"id":2001,"uid":"8001","name":"Shared Home","shareflag":0,
+            "roomlist":[{"id":"21","name":"Guest","dids":["c"]}]}]
+            }}
             """;
         var handler = new StubHttpMessageHandler(response);
         var client = CreateClient(handler);
 
-        var devices = await client.GetDevicesAsync(_session, CancellationToken.None);
+        var homes = await client.GetHomesAsync(_session, CancellationToken.None);
 
-        Assert.Equal(
-            new MiDevice("111", "yeelink.light.color1", "Lamp", "Living Room", true),
-            devices[0]);
-        Assert.Equal(new MiDevice("222", "lumi.gateway.v3", "Gateway", "Hall", true), devices[1]);
-        Assert.Equal(new MiDevice("333", "chuangmi.plug.v3", "chuangmi.plug.v3", null, false), devices[2]);
+        Assert.Equal(3, homes.Count);
+
+        Assert.Equal("1001", homes[0].Id);
+        Assert.Equal("Owned Home", homes[0].Name);
+        Assert.Equal("9001", homes[0].OwnerUserId);
+        Assert.False(homes[0].IsShared);
+        Assert.Equal(3, homes[0].Rooms.Count);
+        AssertRoom(homes[0].Rooms[0], "11", "Living", "a", "b");
+        AssertRoom(homes[0].Rooms[1], "12", "房间 12");
+        AssertRoom(homes[0].Rooms[2], "13", "房间 13");
+
+        Assert.Equal("1002", homes[1].Id);
+        Assert.Equal("家庭 1002", homes[1].Name);
+        Assert.Equal("9002", homes[1].OwnerUserId);
+        Assert.False(homes[1].IsShared);
+        Assert.Empty(homes[1].Rooms);
+
+        Assert.Equal("2001", homes[2].Id);
+        Assert.Equal("Shared Home", homes[2].Name);
+        Assert.Equal("8001", homes[2].OwnerUserId);
+        Assert.True(homes[2].IsShared);
+        AssertRoom(Assert.Single(homes[2].Rooms), "21", "Guest", "c");
 
         Assert.Equal(HttpMethod.Post, handler.Method);
-        Assert.Equal(new Uri("https://api.io.mi.com/app/home/device_list"), handler.RequestUri);
+        Assert.Equal(new Uri("https://api.io.mi.com/app/v2/homeroom/gethome"), handler.RequestUri);
         Assert.Equal(
             $"userId=12345; serviceToken={_serviceToken}; yetAnotherServiceToken={_serviceToken}; " +
             "locale=zh_CN; timezone=GMT+08:00; is_daylight=0; dst_offset=0; channel=MI_APP_STORE",
             handler.Cookie);
-        Assert.DoesNotContain("cUserId", handler.Cookie);
         Assert.Equal("identity", handler.AcceptEncoding);
         Assert.Equal("PROTOCAL-HTTP2", handler.ProtocolFlag);
         Assert.Equal("ENCRYPT-RC4", handler.EncryptAlgorithm);
         Assert.Equal("application/x-www-form-urlencoded", handler.ContentType);
 
-        var form = ParseForm(handler.Body!);
+        var form = ParseForm(handler.Bodies[0]);
         Assert.Equal(
             new[] { "data", "rc4_hash__", "signature", "ssecurity", "_nonce" },
             form.Select(field => field.Key));
@@ -61,31 +83,219 @@ public sealed class MiHomeCloudClientTests
         var signedNonce = SignedNonce(_ssecurity, _nonce);
         var decryptedPayload = DecryptValue(values["data"]);
 
-        Assert.Equal(_deviceListPayload, decryptedPayload);
+        Assert.Equal(_homesPayload, decryptedPayload);
         Assert.Equal(_ssecurity, values["ssecurity"]);
         Assert.Equal(_nonce, values["_nonce"]);
 
         var expectedHash = Convert.ToBase64String(SHA1.HashData(Encoding.UTF8.GetBytes(
-            $$"""POST&/home/device_list&data={{_deviceListPayload}}&{{signedNonce}}""")));
+            $$"""POST&/v2/homeroom/gethome&data={{_homesPayload}}&{{signedNonce}}""")));
         Assert.Equal(expectedHash, DecryptValue(values["rc4_hash__"]));
 
         var expectedSignature = Convert.ToBase64String(SHA1.HashData(Encoding.UTF8.GetBytes(
-            $$"""POST&/home/device_list&data={{values["data"]}}&rc4_hash__={{values["rc4_hash__"]}}&{{signedNonce}}""")));
+            $$"""POST&/v2/homeroom/gethome&data={{values["data"]}}&rc4_hash__={{values["rc4_hash__"]}}&{{signedNonce}}""")));
         Assert.Equal(expectedSignature, values["signature"]);
     }
 
+    [Theory]
+    [InlineData("""{"code":0,"result":{"homelist":null,"share_home_list":null}}""")]
+    [InlineData("""{"code":0,"result":{"homelist":[]}}""")]
+    [InlineData("""{"code":0,"result":null}""")]
+    public async Task GetHomesAsyncToleratesMissingOrNullLists(string response)
+    {
+        var client = CreateClient(new StubHttpMessageHandler(response));
+
+        var homes = await client.GetHomesAsync(_session, CancellationToken.None);
+
+        Assert.Empty(homes);
+    }
+
+    [Theory]
+    [InlineData("""{"code":0,"result":{"homelist":null,"share_home_list":[{"id":"2001","uid":"8001","name":"Shared","roomlist":[]}]}}""", 1)]
+    [InlineData("""{"code":0,"result":{"homelist":[],"share_home_list":[{"id":"2001","uid":"8001","name":"Shared","roomlist":[]},{"id":"2002","uid":"8002","name":"Other","roomlist":[]}]}}""", 2)]
+    public async Task GetHomesAsyncReturnsSharedHomesWhenOwnedListIsEmpty(string response, int expectedCount)
+    {
+        var client = CreateClient(new StubHttpMessageHandler(response));
+
+        var homes = await client.GetHomesAsync(_session, CancellationToken.None);
+
+        Assert.Equal(expectedCount, homes.Count);
+        Assert.All(homes, home => Assert.True(home.IsShared));
+    }
+
     [Fact]
-    public async Task GetDevicesAsyncDecryptsEncryptedResponse()
+    public async Task GetHomesAsyncDecryptsEncryptedResponse()
     {
         const string payload = """
-            {"code":0,"result":{"list":[{"did":"42","model":"model.x","name":"Encrypted","isOnline":true}]}}
+            {"code":0,"result":{"homelist":[{"id":"7","uid":"8","name":"Encrypted","roomlist":[]}]}}
             """;
         var handler = new StubHttpMessageHandler(EncryptResponse(payload));
         var client = CreateClient(handler);
 
-        var devices = await client.GetDevicesAsync(_session, CancellationToken.None);
+        var homes = await client.GetHomesAsync(_session, CancellationToken.None);
 
-        Assert.Equal(new MiDevice("42", "model.x", "Encrypted", null, true), Assert.Single(devices));
+        var home = Assert.Single(homes);
+        Assert.Equal("7", home.Id);
+        Assert.Equal("Encrypted", home.Name);
+        Assert.Equal("8", home.OwnerUserId);
+        Assert.False(home.IsShared);
+        Assert.Empty(home.Rooms);
+    }
+
+    [Fact]
+    public async Task GetDevicesAsyncJoinsRoomsAndPaginates()
+    {
+        var home = new MiHome(
+            "1001",
+            "Owned Home",
+            "9001",
+            false,
+            [new MiRoom("11", "Living", ["a", "orphan"]), new MiRoom("12", "Hall", ["b"])]);
+        string[] responses =
+        [
+            """
+            {"code":0,"result":{"device_info":[
+            {"did":"a","model":"m.a","name":"A","isOnline":true},
+            {"did":"b","model":"m.b","name":"B","online":1},
+            {"did":"c","model":"m.c","name":"C","isOnline":false}],
+            "has_more":true,"max_did":"b"}}
+            """,
+            """
+            {"code":0,"result":{"device_info":[
+            {"did":"d","model":"m.d","isOnline":true}],
+            "has_more":false,"max_did":"d"}}
+            """,
+        ];
+        var handler = new StubHttpMessageHandler(responses);
+        var client = CreateClient(handler);
+
+        var devices = await client.GetDevicesAsync(_session, home, CancellationToken.None);
+
+        Assert.Equal(4, devices.Count);
+        Assert.Equal(new MiDevice("a", "m.a", "A", "Living", true), devices[0]);
+        Assert.Equal(new MiDevice("b", "m.b", "B", "Hall", true), devices[1]);
+        Assert.Equal(new MiDevice("c", "m.c", "C", null, false), devices[2]);
+        Assert.Equal(new MiDevice("d", "m.d", "m.d", null, true), devices[3]);
+
+        const string firstPayload =
+            """{"home_id":1001,"home_owner":9001,"limit":300,"start_did":"","get_split_device":true,"support_smart_home":true,"get_cariot_device":true,"get_third_device":true}""";
+        const string secondPayload =
+            """{"home_id":1001,"home_owner":9001,"limit":300,"start_did":"b","get_split_device":true,"support_smart_home":true,"get_cariot_device":true,"get_third_device":true}""";
+        Assert.Equal(2, handler.RequestCount);
+        Assert.Equal(firstPayload, DecryptRequestPayload(handler, index: 0));
+        Assert.Equal(secondPayload, DecryptRequestPayload(handler, index: 1));
+        Assert.All(
+            handler.RequestUris,
+            uri => Assert.Equal(new Uri("https://api.io.mi.com/app/v2/home/home_device_list"), uri));
+    }
+
+    [Fact]
+    public async Task GetDevicesAsyncKeepsStringIdsAndToleratesNullDeviceInfo()
+    {
+        var home = new MiHome("home-1", "Shared Home", "owner-1", true, []);
+        const string response = """{"code":0,"result":{"device_info":null,"has_more":false}}""";
+        var handler = new StubHttpMessageHandler(response);
+        var client = CreateClient(handler);
+
+        var devices = await client.GetDevicesAsync(_session, home, CancellationToken.None);
+
+        Assert.Empty(devices);
+        Assert.Equal(
+            """{"home_id":"home-1","home_owner":"owner-1","limit":300,"start_did":"","get_split_device":true,"support_smart_home":true,"get_cariot_device":true,"get_third_device":true}""",
+            DecryptRequestPayload(handler));
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task GetDevicesAsyncThrowsWhenMaxDidIsEmpty()
+    {
+        const string response = """{"code":0,"result":{"device_info":null,"has_more":true,"max_did":""}}""";
+        var handler = new StubHttpMessageHandler(response);
+        var client = CreateClient(handler);
+
+        var error = await Assert.ThrowsAsync<MiHomeException>(() => client.GetDevicesAsync(
+            _session,
+            new MiHome("1001", "Home", "9001", false, []),
+            CancellationToken.None));
+
+        Assert.Equal(MiHomeCloudClient.ProtocolErrorCode, error.Code);
+        Assert.Contains("cursor is empty", error.Message);
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task GetDevicesAsyncThrowsWhenMaxDidRepeats()
+    {
+        const string response = """{"code":0,"result":{"device_info":null,"has_more":true,"max_did":"b"}}""";
+        var handler = new StubHttpMessageHandler([response, response]);
+        var client = CreateClient(handler);
+
+        var error = await Assert.ThrowsAsync<MiHomeException>(() => client.GetDevicesAsync(
+            _session,
+            new MiHome("1001", "Home", "9001", false, []),
+            CancellationToken.None));
+
+        Assert.Equal(MiHomeCloudClient.ProtocolErrorCode, error.Code);
+        Assert.Contains("'b'", error.Message);
+        Assert.Equal(2, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task GetDevicesAsyncThrowsWhenPagingCursorLoopsBack()
+    {
+        string[] responses =
+        [
+            """{"code":0,"result":{"device_info":null,"has_more":true,"max_did":"a"}}""",
+            """{"code":0,"result":{"device_info":null,"has_more":true,"max_did":"b"}}""",
+            """{"code":0,"result":{"device_info":null,"has_more":true,"max_did":"a"}}""",
+        ];
+        var handler = new StubHttpMessageHandler(responses);
+        var client = CreateClient(handler);
+
+        var error = await Assert.ThrowsAsync<MiHomeException>(() => client.GetDevicesAsync(
+            _session,
+            new MiHome("1001", "Home", "9001", false, []),
+            CancellationToken.None));
+
+        Assert.Equal(MiHomeCloudClient.ProtocolErrorCode, error.Code);
+        Assert.Contains("'a'", error.Message);
+        Assert.Contains("already used", error.Message);
+        Assert.Equal(3, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task GetDevicesAsyncKeepsLeadingZerosInNumericLookingIds()
+    {
+        var home = new MiHome("00123", "Home", "0009001", false, []);
+        const string response = """{"code":0,"result":{"device_info":null,"has_more":false}}""";
+        var handler = new StubHttpMessageHandler(response);
+        var client = CreateClient(handler);
+
+        await client.GetDevicesAsync(_session, home, CancellationToken.None);
+
+        Assert.Equal(
+            """{"home_id":"00123","home_owner":"0009001","limit":300,"start_did":"","get_split_device":true,"support_smart_home":true,"get_cariot_device":true,"get_third_device":true}""",
+            DecryptRequestPayload(handler));
+    }
+
+    [Fact]
+    public async Task GetDevicesAsyncJoinsFirstRoomAndMatchesNumericDid()
+    {
+        var home = new MiHome(
+            "1001",
+            "Home",
+            "9001",
+            false,
+            [new MiRoom("11", "First", ["42"]), new MiRoom("12", "Second", ["42", "x"])]);
+        const string response = """
+            {"code":0,"result":{"device_info":[{"did":42,"model":"m","name":"Numeric"}],"has_more":false}}
+            """;
+        var client = CreateClient(new StubHttpMessageHandler(response));
+
+        var devices = await client.GetDevicesAsync(_session, home, CancellationToken.None);
+
+        var device = Assert.Single(devices);
+        Assert.Equal("42", device.Did);
+        Assert.Equal("First", device.RoomName);
     }
 
     [Theory]
@@ -261,7 +471,7 @@ public sealed class MiHomeCloudClientTests
         var client = CreateClient(new StubHttpMessageHandler(response));
 
         var error = await Assert.ThrowsAsync<MiHomeException>(
-            () => client.GetDevicesAsync(_session, CancellationToken.None));
+            () => client.GetHomesAsync(_session, CancellationToken.None));
 
         Assert.Equal(-6, error.Code);
         Assert.Equal("login required", error.Message);
@@ -269,14 +479,14 @@ public sealed class MiHomeCloudClientTests
     }
 
     [Theory]
-    [InlineData("""{"result":{"list":[]}}""")]
-    [InlineData("""{"code":"0","result":{"list":[]}}""")]
+    [InlineData("""{"result":{"homelist":[]}}""")]
+    [InlineData("""{"code":"0","result":{"homelist":[]}}""")]
     public async Task MissingOrNonNumericCodeIsAProtocolError(string response)
     {
         var client = CreateClient(new StubHttpMessageHandler(response));
 
         var error = await Assert.ThrowsAsync<MiHomeException>(
-            () => client.GetDevicesAsync(_session, CancellationToken.None));
+            () => client.GetHomesAsync(_session, CancellationToken.None));
 
         Assert.Equal(MiHomeCloudClient.ProtocolErrorCode, error.Code);
     }
@@ -288,7 +498,7 @@ public sealed class MiHomeCloudClientTests
         var client = CreateClient(new StubHttpMessageHandler(response, HttpStatusCode.ServiceUnavailable));
 
         var error = await Assert.ThrowsAsync<MiHomeException>(
-            () => client.GetDevicesAsync(_session, CancellationToken.None));
+            () => client.GetHomesAsync(_session, CancellationToken.None));
 
         Assert.Equal(503, error.Code);
         Assert.Contains("503", error.Message);
@@ -302,7 +512,7 @@ public sealed class MiHomeCloudClientTests
         var client = CreateClient(new StubHttpMessageHandler(response, HttpStatusCode.Forbidden));
 
         var error = await Assert.ThrowsAsync<MiHomeException>(
-            () => client.GetDevicesAsync(_session, CancellationToken.None));
+            () => client.GetHomesAsync(_session, CancellationToken.None));
 
         Assert.Equal(403, error.Code);
         Assert.Contains("session may have expired", error.Message);
@@ -311,26 +521,33 @@ public sealed class MiHomeCloudClientTests
     [Fact]
     public async Task FormValuesWithPlusArePercentEncodedAndDecodeAsPlus()
     {
-        const string expectedData =
-            "0L4aCjnr68anfQJZmLAT2c9w37ei1aYstHAicoEcJx0CyN1jpUJAqRw5cb+4b4VLsv5+4h7e+laO/BaNejBPtAAw2xmIosNh/6kL30yA3P3/JrewyF1H5pidwCN8QpU=";
-        var handler = new StubHttpMessageHandler("""{"code":0,"result":{"list":[]}}""");
+        const string expectedData = "0L4RBiDU9pbpO1MF+f0R2dcxjZyjyKJy8zV9crscI1xJ6t1hr0l6qVZiMvbFbIVJz7d6/ALPiRCN7wuNd00WsxM1xwiGusRm+rxIj0izzuTBMqydzRAQs5aF1SF5eJ6gr5s6nQOlOABEdUde0c9r";
+        var handler = new StubHttpMessageHandler("""{"code":0,"result":{}}""");
         var client = CreateClient(handler);
 
-        await client.GetDevicesAsync(_session, CancellationToken.None);
+        await client.GetHomesAsync(_session, CancellationToken.None);
 
-        var body = handler.Body!;
+        var body = handler.Bodies[0];
         Assert.Contains("%2B", body);
 
         var values = ParseForm(body).ToDictionary(field => field.Key, field => field.Value);
         Assert.Equal(expectedData, values["data"]);
         Assert.Contains("+", values["data"]);
     }
+
     private static MiHomeCloudClient CreateClient(StubHttpMessageHandler handler)
         => new(new HttpClient(handler), () => _nonce);
 
-    private static string DecryptRequestPayload(StubHttpMessageHandler handler)
+    private static void AssertRoom(MiRoom room, string id, string name, params string[] deviceIds)
     {
-        var values = ParseForm(handler.Body!).ToDictionary(field => field.Key, field => field.Value);
+        Assert.Equal(id, room.Id);
+        Assert.Equal(name, room.Name);
+        Assert.Equal(deviceIds, room.DeviceIds);
+    }
+
+    private static string DecryptRequestPayload(StubHttpMessageHandler handler, int index = 0)
+    {
+        var values = ParseForm(handler.Bodies[index]).ToDictionary(field => field.Key, field => field.Value);
         return DecryptValue(values["data"]);
     }
 
@@ -365,20 +582,30 @@ public sealed class MiHomeCloudClientTests
 
     private sealed class StubHttpMessageHandler : HttpMessageHandler
     {
-        private readonly string _responseBody;
+        private readonly IReadOnlyList<string> _responses;
         private readonly HttpStatusCode _statusCode;
+        private int _index;
 
         public StubHttpMessageHandler(string responseBody, HttpStatusCode statusCode = HttpStatusCode.OK)
+            : this([responseBody], statusCode)
         {
-            _responseBody = responseBody;
+        }
+
+        public StubHttpMessageHandler(IReadOnlyList<string> responses, HttpStatusCode statusCode = HttpStatusCode.OK)
+        {
+            _responses = responses;
             _statusCode = statusCode;
         }
+
+        public int RequestCount => Bodies.Count;
+
+        public List<string> Bodies { get; } = [];
+
+        public List<Uri?> RequestUris { get; } = [];
 
         public HttpMethod? Method { get; private set; }
 
         public Uri? RequestUri { get; private set; }
-
-        public string? Body { get; private set; }
 
         public string? Cookie { get; private set; }
 
@@ -394,20 +621,30 @@ public sealed class MiHomeCloudClientTests
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
-            Method = request.Method;
-            RequestUri = request.RequestUri;
-            Body = request.Content is null
+            var responseBody = _responses[Math.Min(_index, _responses.Count - 1)];
+            var requestBody = request.Content is null
                 ? null
                 : await request.Content.ReadAsStringAsync(cancellationToken);
-            Cookie = ReadHeader(request, "Cookie");
-            AcceptEncoding = ReadHeader(request, "Accept-Encoding");
-            ProtocolFlag = ReadHeader(request, "x-xiaomi-protocal-flag-cli");
-            EncryptAlgorithm = ReadHeader(request, "MIOT-ENCRYPT-ALGORITHM");
-            ContentType = request.Content?.Headers.ContentType?.ToString();
+
+            Bodies.Add(requestBody ?? string.Empty);
+            RequestUris.Add(request.RequestUri);
+
+            if (_index == 0)
+            {
+                Method = request.Method;
+                RequestUri = request.RequestUri;
+                Cookie = ReadHeader(request, "Cookie");
+                AcceptEncoding = ReadHeader(request, "Accept-Encoding");
+                ProtocolFlag = ReadHeader(request, "x-xiaomi-protocal-flag-cli");
+                EncryptAlgorithm = ReadHeader(request, "MIOT-ENCRYPT-ALGORITHM");
+                ContentType = request.Content?.Headers.ContentType?.ToString();
+            }
+
+            _index++;
 
             return new HttpResponseMessage(_statusCode)
             {
-                Content = new StringContent(_responseBody),
+                Content = new StringContent(responseBody),
             };
         }
 

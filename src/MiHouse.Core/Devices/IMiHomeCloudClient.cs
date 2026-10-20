@@ -9,9 +9,18 @@ namespace MiHouse.Core.Devices;
 public interface IMiHomeCloudClient
 {
     /// <summary>
-    /// Returns every device visible to the account, across all homes.
+    /// Returns every home visible to the account, owned and shared, with their rooms.
     /// </summary>
-    Task<IReadOnlyList<MiDevice>> GetDevicesAsync(MiHomeSession session, CancellationToken cancellationToken);
+    Task<IReadOnlyList<MiHome>> GetHomesAsync(MiHomeSession session, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns the devices of one home, with <see cref="MiDevice.RoomName"/> resolved from the
+    /// home's room membership.
+    /// </summary>
+    Task<IReadOnlyList<MiDevice>> GetDevicesAsync(
+        MiHomeSession session,
+        MiHome home,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// Reads the given properties of one device.
