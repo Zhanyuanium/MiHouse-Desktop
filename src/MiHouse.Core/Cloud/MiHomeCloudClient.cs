@@ -1,0 +1,475 @@
+using System.Globalization;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
+using MiHouse.Core.Devices;
+using MiHouse.Core.Session;
+
+namespace MiHouse.Core.Cloud;
+
+/// <summary>
+/// Mi Home cloud client. Requests are signed with <see cref="MiHomeRequestSigner"/> and sent
+/// with the session cookies the cloud expects.
+/// </summary>
+public sealed class MiHomeCloudClient : IMiHomeCloudClient
+{
+    internal const int ProtocolErrorCode = -1;
+    private const string _startMarker = "&&&START&&&";
+    private const string _deviceListPath = "home/device_list";
+    private const string _deviceListPayload =
+        """{"getVirtualModel":true,"getHuamiDevices":1,"get_split_device":false,"support_smart_home":true}""";
+
+    private readonly HttpClient _httpClient;
+    private readonly MiHomeRequestSigner _signer;
+
+    /// <summary>
+    /// Creates a client over the supplied <see cref="HttpClient"/>.
+    /// </summary>
+    /// <param name="httpClient">Sender used for every request.</param>
+    /// <param name="nonceFactory">
+    /// Overrides nonce generation, mainly for tests. Defaults to
+    /// <see cref="MiHomeRequestSigner.CreateNonce"/>.
+    /// </param>
+    public MiHomeCloudClient(HttpClient httpClient, Func<string>? nonceFactory = null)
+    {
+        ArgumentNullException.ThrowIfNull(httpClient);
+
+        _httpClient = httpClient;
+        _signer = nonceFactory is null
+            ? new MiHomeRequestSigner()
+            : new MiHomeRequestSigner(null, nonceFactory, null, null);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<MiDevice>> GetDevicesAsync(
+        MiHomeSession session,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        var response = await PostAsync(session, _deviceListPath, _deviceListPayload, cancellationToken)
+            .ConfigureAwait(false);
+        EnsureSuccess(response, _deviceListPath);
+
+        return ParseDevices(response);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<MiPropertyValue>> GetPropertiesAsync(
+        MiHomeSession session,
+        string did,
+        IReadOnlyList<MiPropertyKey> properties,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(did);
+        ArgumentNullException.ThrowIfNull(properties);
+
+        if (properties.Count == 0)
+        {
+            return [];
+        }
+
+        var payload = JsonSerializer.Serialize(new
+        {
+            datasource = 1,
+            @params = properties
+                .Select(property => new { did, siid = property.Siid, piid = property.Piid })
+                .ToArray(),
+        });
+
+        const string path = "v2/miotspec/prop/get";
+        var response = await PostAsync(session, path, payload, cancellationToken).ConfigureAwait(false);
+        EnsureSuccess(response, path);
+
+        return ParseProperties(response);
+    }
+
+    /// <inheritdoc />
+    public async Task SetPropertyAsync(
+        MiHomeSession session,
+        string did,
+        MiPropertyKey property,
+        JsonElement value,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(did);
+
+        var payload = JsonSerializer.Serialize(new
+        {
+            @params = new[]
+            {
+                new { did, siid = property.Siid, piid = property.Piid, value },
+            },
+        });
+
+        const string path = "v2/miotspec/prop/set";
+        var response = await PostAsync(session, path, payload, cancellationToken).ConfigureAwait(false);
+
+        EnsureSuccess(response, path);
+        EnsurePropertySetSuccess(response, path);
+    }
+
+    /// <inheritdoc />
+    public async Task<JsonElement> InvokeActionAsync(
+        MiHomeSession session,
+        string did,
+        MiActionKey action,
+        IReadOnlyList<JsonElement> input,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(did);
+        ArgumentNullException.ThrowIfNull(input);
+
+        var payload = JsonSerializer.Serialize(new
+        {
+            @params = new
+            {
+                did,
+                siid = action.Siid,
+                aiid = action.Aiid,
+                @in = input.ToArray(),
+            },
+        });
+
+        const string path = "v2/miotspec/action";
+        var response = await PostAsync(session, path, payload, cancellationToken).ConfigureAwait(false);
+        EnsureSuccess(response, path);
+
+        return ParseActionResult(response, path);
+    }
+
+    private async Task<JsonElement> PostAsync(
+        MiHomeSession session,
+        string relativePath,
+        string payload,
+        CancellationToken cancellationToken)
+    {
+        var url = new Uri(MiHomeEndpoints.AppBase(session.Region), relativePath);
+        KeyValuePair<string, string>[] fields = [new("data", payload)];
+
+        var signedFields = _signer.SignForm(session.Ssecurity, url.ToString(), fields, out var nonce);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.TryAddWithoutValidation("Cookie", BuildCookieHeader(session));
+        request.Headers.TryAddWithoutValidation("Accept-Encoding", "identity");
+        request.Headers.TryAddWithoutValidation("x-xiaomi-protocal-flag-cli", "PROTOCAL-HTTP2");
+        request.Headers.TryAddWithoutValidation("MIOT-ENCRYPT-ALGORITHM", "ENCRYPT-RC4");
+
+        request.Content = new ByteArrayContent(Encoding.UTF8.GetBytes(EncodeForm(signedFields)));
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
+
+        using var response = await _httpClient
+            .SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw CreateHttpException(response, relativePath);
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        var plaintext = ReadBody(session, nonce, body);
+
+        using var document = JsonDocument.Parse(plaintext);
+        return document.RootElement.Clone();
+    }
+
+    private string ReadBody(MiHomeSession session, string nonce, string body)
+    {
+        var text = StripStartMarker(body);
+        if (LooksLikeJson(text))
+        {
+            return text;
+        }
+
+        // Encrypted responses are a bare Base64 RC4 blob with no JSON marker.
+        return StripStartMarker(_signer.DecryptResponse(session.Ssecurity, nonce, text));
+    }
+
+    private static string StripStartMarker(string body)
+    {
+        var text = body.Trim();
+        return text.StartsWith(_startMarker, StringComparison.Ordinal)
+            ? text[_startMarker.Length..].TrimStart()
+            : text;
+    }
+
+    private static bool LooksLikeJson(string text)
+        => text.Length > 0 && text[0] is '{' or '[';
+
+    private static string BuildCookieHeader(MiHomeSession session)
+        => string.Join(
+            "; ",
+            $"userId={session.UserId}",
+            $"serviceToken={session.ServiceToken}",
+            $"yetAnotherServiceToken={session.ServiceToken}",
+            "locale=zh_CN",
+            "timezone=GMT+08:00",
+            "is_daylight=0",
+            "dst_offset=0",
+            "channel=MI_APP_STORE");
+
+    private static string EncodeForm(IReadOnlyList<KeyValuePair<string, string>> fields)
+    {
+        var builder = new StringBuilder();
+        for (var index = 0; index < fields.Count; index++)
+        {
+            if (index > 0)
+            {
+                builder.Append('&');
+            }
+
+            builder
+                .Append(Uri.EscapeDataString(fields[index].Key))
+                .Append('=')
+                .Append(Uri.EscapeDataString(fields[index].Value));
+        }
+
+        return builder.ToString();
+    }
+
+    private static MiHomeException CreateHttpException(HttpResponseMessage response, string path)
+    {
+        var status = (int)response.StatusCode;
+        var reason = string.IsNullOrWhiteSpace(response.ReasonPhrase)
+            ? response.StatusCode.ToString()
+            : response.ReasonPhrase;
+
+        var message = status is 401 or 403
+            ? $"Mi Home cloud request '{path}' failed with HTTP {status} {reason}; the session may have expired."
+            : $"Mi Home cloud request '{path}' failed with HTTP {status} {reason}.";
+
+        return new MiHomeException(status, message);
+    }
+
+    private static void EnsureSuccess(JsonElement response, string path)
+    {
+        var code = ReadRequiredInt32(response, path);
+        if (code != 0)
+        {
+            throw CreateException(response, path, code);
+        }
+    }
+
+    private static void EnsurePropertySetSuccess(JsonElement response, string path)
+    {
+        if (!response.TryGetProperty("result", out var result)
+            || result.ValueKind != JsonValueKind.Array
+            || result.GetArrayLength() == 0)
+        {
+            throw ProtocolError(path, "the property write response has no result entries.");
+        }
+
+        foreach (var entry in result.EnumerateArray())
+        {
+            if (entry.ValueKind != JsonValueKind.Object)
+            {
+                throw ProtocolError(path, "a property write result entry is not an object.");
+            }
+
+            var code = ReadRequiredInt32(entry, path);
+
+            // Some gateway-backed writes answer 1 instead of 0 while still accepting the value.
+            if (code is not (0 or 1))
+            {
+                throw CreateException(entry, path, code);
+            }
+        }
+    }
+
+    private static int ReadRequiredInt32(JsonElement element, string path)
+    {
+        if (!element.TryGetProperty("code", out var code)
+            || code.ValueKind != JsonValueKind.Number
+            || !code.TryGetInt32(out var value))
+        {
+            throw ProtocolError(path, "the response has no numeric 'code'.");
+        }
+
+        return value;
+    }
+
+    private static MiHomeException ProtocolError(string path, string detail)
+        => new(ProtocolErrorCode, $"Unexpected Mi Home cloud response from '{path}': {detail}");
+
+    private static MiHomeException CreateException(JsonElement response, string path, int code)
+    {
+        var description = ReadString(response, "description");
+        var message = ReadString(response, "message");
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            message = description;
+        }
+
+        message ??= $"Mi Home cloud request '{path}' failed with code {code}.";
+        return new MiHomeException(code, message, description);
+    }
+
+    private static IReadOnlyList<MiDevice> ParseDevices(JsonElement response)
+    {
+        if (!response.TryGetProperty("result", out var result)
+            || result.ValueKind != JsonValueKind.Object
+            || !result.TryGetProperty("list", out var list)
+            || list.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var devices = new List<MiDevice>(list.GetArrayLength());
+        foreach (var item in list.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var did = ReadIdentifier(item, "did");
+            if (string.IsNullOrEmpty(did))
+            {
+                continue;
+            }
+
+            var model = ReadString(item, "model") ?? string.Empty;
+            var name = ReadString(item, "name");
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                name = model;
+            }
+
+            var room = ReadString(item, "room_name") ?? ReadString(item, "roomName");
+            if (string.IsNullOrWhiteSpace(room))
+            {
+                room = null;
+            }
+
+            devices.Add(new MiDevice(did, model, name, room, ReadOnline(item)));
+        }
+
+        return devices;
+    }
+
+    private static IReadOnlyList<MiPropertyValue> ParseProperties(JsonElement response)
+    {
+        if (!response.TryGetProperty("result", out var result))
+        {
+            return [];
+        }
+
+        if (result.ValueKind == JsonValueKind.Object && result.TryGetProperty("result", out var nested))
+        {
+            result = nested;
+        }
+
+        if (result.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var values = new List<MiPropertyValue>();
+        foreach (var item in result.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            if ((ReadInt32(item, "code") ?? 0) != 0)
+            {
+                continue;
+            }
+
+            var siid = ReadInt32(item, "siid");
+            var piid = ReadInt32(item, "piid");
+            if (siid is null || piid is null || !item.TryGetProperty("value", out var value))
+            {
+                continue;
+            }
+
+            values.Add(new MiPropertyValue(new MiPropertyKey(siid.Value, piid.Value), value.Clone()));
+        }
+
+        return values;
+    }
+
+    private static JsonElement ParseActionResult(JsonElement response, string path)
+    {
+        if (!response.TryGetProperty("result", out var result) || result.ValueKind != JsonValueKind.Object)
+        {
+            throw ProtocolError(path, "the action response has no result object.");
+        }
+
+        var code = ReadRequiredInt32(result, path);
+        if (code != 0)
+        {
+            throw CreateException(result, path, code);
+        }
+
+        return result.TryGetProperty("out", out var output) ? output.Clone() : EmptyArrayElement();
+    }
+
+    private static JsonElement EmptyArrayElement()
+    {
+        using var document = JsonDocument.Parse("[]");
+        return document.RootElement.Clone();
+    }
+
+    private static bool ReadOnline(JsonElement item)
+    {
+        if (!item.TryGetProperty("isOnline", out var online)
+            && !item.TryGetProperty("online", out online))
+        {
+            return false;
+        }
+
+        return online.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Number when online.TryGetInt32(out var number) => number != 0,
+            JsonValueKind.String => online.GetString() is "1" or "true",
+            _ => false,
+        };
+    }
+
+    private static string? ReadIdentifier(JsonElement item, string name)
+    {
+        if (!item.TryGetProperty(name, out var property))
+        {
+            return null;
+        }
+
+        return property.ValueKind switch
+        {
+            JsonValueKind.String => property.GetString(),
+            JsonValueKind.Number => property.GetRawText(),
+            _ => null,
+        };
+    }
+
+    private static int? ReadInt32(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var property))
+        {
+            return null;
+        }
+
+        return property.ValueKind switch
+        {
+            JsonValueKind.Number when property.TryGetInt32(out var value) => value,
+            JsonValueKind.String when int.TryParse(
+                property.GetString(),
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var value) => value,
+            _ => null,
+        };
+    }
+
+    private static string? ReadString(JsonElement element, string name)
+        => element.TryGetProperty(name, out var property) && property.ValueKind == JsonValueKind.String
+            ? property.GetString()
+            : null;
+}

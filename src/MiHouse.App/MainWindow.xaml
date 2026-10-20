@@ -1,29 +1,10 @@
-<?xml version="1.0" encoding="utf-8"?>
 <Window
-    x:Class="MiHouse.App.MainWindow"
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:MiHouse.App"
-    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    mc:Ignorable="d"
-    Title="MiHouse">
-
-    <Grid Padding="32" RowSpacing="8">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-
-        <TextBlock
-            Style="{StaticResource TitleTextBlockStyle}"
-            Text="MiHouse" />
-
-        <TextBlock
-            Grid.Row="1"
-            VerticalAlignment="Top"
-            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-            Text="骨架就绪：登录与设备控制将在 M1 接入。"
-            TextWrapping="Wrap" />
-    </Grid>
+  x:Class="MiHouse.App.MainWindow"
+  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  Title="MiHouse">
+  <Window.SystemBackdrop>
+    <MicaBackdrop />
+  </Window.SystemBackdrop>
+  <Frame x:Name="RootFrame" Background="{ThemeResource LayerFillColorDefaultBrush}" />
 </Window>

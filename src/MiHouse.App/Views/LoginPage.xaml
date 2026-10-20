@@ -1,0 +1,62 @@
+<Page
+  x:Class="MiHouse.App.Views.LoginPage"
+  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  Background="{ThemeResource LayerFillColorDefaultBrush}"
+  Loaded="OnLoaded" Unloaded="OnUnloaded" KeyDown="OnKeyDown">
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Stretch">
+    <Grid Padding="24,48" MinHeight="640">
+      <StackPanel MaxWidth="420" HorizontalAlignment="Stretch" VerticalAlignment="Center" Spacing="24">
+        <StackPanel Spacing="8">
+          <TextBlock Text="登录米家" Style="{ThemeResource TitleLargeTextBlockStyle}" HorizontalAlignment="Center" />
+          <TextBlock Text="使用小米账号查看和控制设备" Style="{StaticResource SecondaryTextStyle}" HorizontalAlignment="Center" />
+        </StackPanel>
+        <StackPanel Spacing="16" Visibility="{Binding IsQrMode, Converter={StaticResource BooleanVisibilityConverter}}">
+          <Button x:Name="QrButton" Width="240" Height="240" Padding="0" HorizontalAlignment="Center"
+            Command="{Binding RefreshQrCommand}" AutomationProperties.Name="刷新登录二维码"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderThickness="0">
+            <Grid Width="240" Height="240">
+              <Image x:Name="QrImage" Width="240" Height="240"
+                Stretch="Uniform" AutomationProperties.Name="米家登录二维码" />
+              <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="16"
+                Visibility="{Binding IsEmpty, Converter={StaticResource BooleanVisibilityConverter}}">
+                <FontIcon Glyph="&#xED14;" FontSize="48" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                <TextBlock Text="米家 App 扫码登录" Style="{StaticResource SecondaryTextStyle}" />
+              </StackPanel>
+              <ProgressRing Width="40" Height="40" IsActive="{Binding IsBusy}"
+                Visibility="{Binding IsBusy, Converter={StaticResource BooleanVisibilityConverter}}"
+                AutomationProperties.Name="正在生成二维码" />
+              <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="8" Padding="8" CornerRadius="16"
+                Background="{ThemeResource LayerFillColorDefaultBrush}"
+                Visibility="{Binding IsPolling, Converter={StaticResource BooleanVisibilityConverter}}">
+                <ProgressRing Width="20" Height="20" IsActive="{Binding IsPolling}" AutomationProperties.Name="等待扫码确认" />
+              </Border>
+            </Grid>
+          </Button>
+          <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" HorizontalAlignment="Center"
+            AutomationProperties.LiveSetting="Polite" />
+          <Button Content="刷新二维码" Command="{Binding RefreshQrCommand}" HorizontalAlignment="Center"
+            Style="{StaticResource QuietButtonStyle}" AutomationProperties.Name="刷新二维码" />
+        </StackPanel>
+        <StackPanel Spacing="16" Visibility="{Binding IsPasswordMode, Converter={StaticResource BooleanVisibilityConverter}}">
+          <TextBox x:Name="AccountBox" Header="小米账号" PlaceholderText="手机号、邮箱或小米 ID"
+            Text="{Binding Account, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="小米账号" />
+          <PasswordBox x:Name="PasswordBox" Header="密码" Password="{Binding Password, Mode=TwoWay}"
+            AutomationProperties.Name="小米账号密码" />
+          <Button Content="登录" Command="{Binding SubmitPasswordCommand}" HorizontalAlignment="Stretch"
+            Style="{StaticResource AccentButtonStyle}" AutomationProperties.Name="登录" />
+          <ProgressBar IsIndeterminate="True" Visibility="{Binding IsBusy, Converter={StaticResource BooleanVisibilityConverter}}"
+            AutomationProperties.Name="正在登录" />
+        </StackPanel>
+        <InfoBar IsOpen="{Binding Error, Converter={StaticResource HasTextConverter}}" IsClosable="False"
+          Severity="Error" Title="登录未完成" Message="{Binding Error}" AutomationProperties.LiveSetting="Polite" />
+        <Button Content="使用账号密码登录" Command="{Binding ShowPasswordCommand}" Click="OnShowPassword"
+          HorizontalAlignment="Center" Style="{StaticResource QuietButtonStyle}" AutomationProperties.Name="使用账号密码登录"
+          Visibility="{Binding IsQrMode, Converter={StaticResource BooleanVisibilityConverter}}" />
+        <Button Content="使用二维码登录" Command="{Binding RefreshQrCommand}" Click="OnShowQr"
+          HorizontalAlignment="Center" Style="{StaticResource QuietButtonStyle}" AutomationProperties.Name="使用二维码登录"
+          Visibility="{Binding IsPasswordMode, Converter={StaticResource BooleanVisibilityConverter}}" />
+      </StackPanel>
+    </Grid>
+  </ScrollViewer>
+</Page>
