@@ -80,12 +80,14 @@ public sealed partial class PropertyRowViewModel : ObservableObject
     public bool IsRange => !IsBoolean && !IsChoice && IsNumeric && Property.Range is { } range && range.Max > range.Min;
     public bool IsText => !IsBoolean && !IsChoice && !IsRange;
     public bool IsEditable => Property.Writable && !IsText;
+    public bool IsEditableRange => IsRange && IsEditable;
     public bool CanEdit => IsEditable && !IsBusy && !_token.IsCancellationRequested;
     public bool IsInteger => Property.Format.StartsWith("int", StringComparison.Ordinal) || Property.Format.StartsWith("uint", StringComparison.Ordinal);
     public bool IsNumeric => IsInteger || Property.Format is "float" or "double";
     public double Minimum => Property.Range?.Min ?? 0;
     public double Maximum => Property.Range?.Max ?? 1;
     public double Step => Property.Range is { Step: > 0 } range ? range.Step : 1;
+    public double SliderStepFrequency => (Maximum - Minimum) / Step <= 200 ? Step : 0;
     public string NumericText => NumericValue.ToString("0.###", CultureInfo.CurrentCulture);
     public bool HasDisplayValue => HasValue || HasPendingChanges;
 
@@ -104,13 +106,21 @@ public sealed partial class PropertyRowViewModel : ObservableObject
         Error = null;
         try
         {
+            double numericValue = NumericValue;
+            if (Property.Range is { Step: > 0 } range)
+            {
+                double steps = Math.Round((numericValue - range.Min) / range.Step, MidpointRounding.AwayFromZero);
+                numericValue = range.Min + steps * range.Step;
+                numericValue = Math.Clamp(numericValue, range.Min, range.Max);
+            }
+
             JsonElement value = IsBoolean
                 ? JsonSerializer.SerializeToElement(BoolValue)
                 : IsChoice
                     ? JsonSerializer.SerializeToElement(SelectedOption!.Value)
                     : IsInteger
-                        ? JsonSerializer.SerializeToElement((long)Math.Round(NumericValue))
-                        : JsonSerializer.SerializeToElement(NumericValue);
+                        ? JsonSerializer.SerializeToElement((long)Math.Round(numericValue))
+                        : JsonSerializer.SerializeToElement(numericValue);
             await _cloud.SetPropertyAsync(_session, _did, Key, value, _token);
             _token.ThrowIfCancellationRequested();
             ReadValue(value);

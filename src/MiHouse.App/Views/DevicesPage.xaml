@@ -146,9 +146,9 @@
                           </DataTemplate>
                         </ComboBox.ItemTemplate>
                       </ComboBox>
-                      <StackPanel Spacing="4" Visibility="{Binding IsRange, Converter={StaticResource BooleanVisibilityConverter}}">
-                        <Slider Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" StepFrequency="{Binding Step}"
-                          TickFrequency="{Binding Step}" SnapsTo="StepValues" Value="{Binding NumericValue, Mode=TwoWay}"
+                      <StackPanel Spacing="4" Visibility="{Binding IsEditableRange, Converter={StaticResource BooleanVisibilityConverter}}">
+                        <Slider Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" StepFrequency="{Binding SliderStepFrequency}"
+                          SnapsTo="StepValues" Value="{Binding NumericValue, Mode=TwoWay}"
                           IsEnabled="{Binding CanEdit}" AutomationProperties.Name="{Binding Name}" />
                         <TextBlock Text="{Binding NumericText}" HorizontalAlignment="Right" Style="{ThemeResource CaptionTextBlockStyle}"
                           Visibility="{Binding HasDisplayValue, Converter={StaticResource BooleanVisibilityConverter}}" />
