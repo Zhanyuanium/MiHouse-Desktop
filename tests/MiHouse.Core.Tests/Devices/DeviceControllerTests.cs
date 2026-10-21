@@ -250,6 +250,21 @@ public sealed class DeviceControllerTests
     }
 
     [Fact]
+    public async Task GetSpecAsyncKeepsEveryServiceForOrdinaryDevice()
+    {
+        var spec = CreateSpec("urn:device:switch", 2, 3, 4);
+        var specs = new FakeSpecCatalog();
+        specs.ByUrn[spec.Type] = spec;
+        var controller = CreateController(specs);
+        var device = new MiDevice("a.s2", "model.x", "Ordinary", null, true, SpecType: spec.Type);
+
+        var resolved = await controller.GetSpecAsync(device, CancellationToken.None);
+
+        Assert.NotNull(resolved);
+        Assert.Equal(3, resolved.Services.Count);
+    }
+
+    [Fact]
     public async Task InvokeAsyncIncompleteSplitMetadataThrowsWithoutReachingParent()
     {
         var cloud = new FakeCloud();

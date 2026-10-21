@@ -792,30 +792,42 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
             return (null, null, false);
         }
 
-        var parentDid = split.TryGetProperty("parentId", out var parent)
-            ? NormalizeIdentifier(parent)
-            : null;
+        var parentElement = split.TryGetProperty("parentId", out var parent) ? parent : (JsonElement?)null;
+        var moduleElement = split.TryGetProperty("moduleId", out var module) ? module : (JsonElement?)null;
+
+        string? parentDid = parentElement is { } parentValue ? NormalizeIdentifier(parentValue) : null;
         if (string.IsNullOrWhiteSpace(parentDid))
         {
             parentDid = null;
         }
 
-        var channelSiid = split.TryGetProperty("moduleId", out var module)
-            ? ReadInt32Value(module)
-            : null;
+        int? channelSiid = moduleElement is { } moduleValue ? ReadInt32Value(moduleValue) : null;
         if (channelSiid is not > 0)
         {
             channelSiid = null;
         }
 
-        // The cloud sends `"split": {}` for ordinary devices; only a split object that names
-        // one half without the other is malformed.
-        if (parentDid is null && channelSiid is null)
+        // The cloud sends `"split": {}` for ordinary devices, and may fill a field with an
+        // empty string. A field that carries a value we cannot use is malformed, not absent.
+        bool parentMalformed = parentDid is null && HasConcreteValue(parentElement);
+        bool moduleMalformed = channelSiid is null && HasConcreteValue(moduleElement);
+
+        if (parentDid is null && channelSiid is null && !parentMalformed && !moduleMalformed)
         {
             return (null, null, false);
         }
 
-        return (parentDid, channelSiid, parentDid is null || channelSiid is null);
+        return (parentDid, channelSiid, parentMalformed || moduleMalformed || parentDid is null || channelSiid is null);
+    }
+
+    private static bool HasConcreteValue(JsonElement? element)
+    {
+        if (element is not { } value || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return false;
+        }
+
+        return value.ValueKind != JsonValueKind.String || !string.IsNullOrWhiteSpace(value.GetString());
     }
 
     private static bool ReadBoolean(JsonElement item, string name)

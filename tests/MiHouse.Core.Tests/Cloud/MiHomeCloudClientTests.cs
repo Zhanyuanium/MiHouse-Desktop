@@ -368,13 +368,16 @@ public sealed class MiHomeCloudClientTests
         Assert.False(device.IsSplitMetadataIncomplete);
     }
 
-    [Fact]
-    public async Task GetDevicesAsyncTreatsEmptySplitObjectAsOrdinaryDevice()
+    [Theory]
+    [InlineData("""{}""")]
+    [InlineData("""{"parentId":"","moduleId":""}""")]
+    [InlineData("""{"parentId":null,"moduleId":null}""")]
+    public async Task GetDevicesAsyncTreatsEmptySplitObjectAsOrdinaryDevice(string split)
     {
-        const string response = """
+        string response = $$$"""
             {"code":0,"result":{"device_info":[
             {"did":"a.s2","model":"m","name":"A","isOnline":true,
-            "extra":{"split":{}}}],
+            "extra":{"split":{{{split}}}}}],
             "has_more":false}}
             """;
         var client = CreateClient(new StubHttpMessageHandler(response));
@@ -415,6 +418,27 @@ public sealed class MiHomeCloudClientTests
         Assert.True(device.IsSplitIncomplete);
         Assert.True(device.IsSplitMetadataIncomplete);
         Assert.Equal("2000420370", device.ControlDid);
+    }
+
+    [Fact]
+    public async Task GetDevicesAsyncMarksSplitIncompleteWhenOnlyChannelIsMalformed()
+    {
+        const string response = """
+            {"code":0,"result":{"device_info":[
+            {"did":"a.s2","model":"m","name":"A","isOnline":true,
+            "extra":{"split":{"moduleId":"garbage"}}}],
+            "has_more":false}}
+            """;
+        var client = CreateClient(new StubHttpMessageHandler(response));
+
+        var device = Assert.Single(await client.GetDevicesAsync(
+            _session,
+            new MiHome("1001", "Home", "9001", false, []),
+            CancellationToken.None));
+
+        Assert.Null(device.ParentDid);
+        Assert.Null(device.ChannelSiid);
+        Assert.True(device.IsSplitMetadataIncomplete);
     }
 
     [Fact]
