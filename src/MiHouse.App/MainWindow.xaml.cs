@@ -40,6 +40,7 @@ public sealed partial class MainWindow : Window
         _lan = lan;
         _snapshots = snapshots;
         InitializeComponent();
+        Title = AppResources.DisplayName;
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(WindowTitleBar);
         WindowTitleBar.Loaded += (_, _) =>

@@ -37,7 +37,7 @@
         </StackPanel>
         <StackPanel Spacing="10">
           <TextBlock Text="应用信息" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="4,0,0,2" />
-          <views:SettingsCard Header="关于 MiHouse" Description="版本信息、许可与开源声明" Glyph="&#xE946;">
+          <views:SettingsCard x:Name="AboutCard" Header="关于 MiHouse" Description="版本信息、许可与开源声明" Glyph="&#xE946;">
             <views:SettingsCard.Trailing><TextBlock Style="{StaticResource PlannedTag}" /></views:SettingsCard.Trailing>
           </views:SettingsCard>
         </StackPanel>

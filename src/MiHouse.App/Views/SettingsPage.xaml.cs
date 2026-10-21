@@ -4,5 +4,9 @@ namespace MiHouse.App.Views;
 
 public sealed partial class SettingsPage : Page
 {
-    public SettingsPage() => InitializeComponent();
+    public SettingsPage()
+    {
+        InitializeComponent();
+        AboutCard.Header = $"关于 {AppResources.DisplayName}";
+    }
 }

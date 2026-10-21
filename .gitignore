@@ -484,3 +484,6 @@ $RECYCLE.BIN/
 
 # Development certificate
 devcert.pfx
+
+# Local, original icon artwork
+/design/icons/
