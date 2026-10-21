@@ -18,7 +18,7 @@ public sealed partial class DevicesViewModel
     private string? _activeClassName;
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RefreshCurrentPageCommand))]
-    [NotifyPropertyChangedFor(nameof(PageTitle), nameof(IsRoomEmpty), nameof(IsRoomLoading), nameof(IsRoomFailed), nameof(ShowRefreshAction))]
+    [NotifyPropertyChangedFor(nameof(PageTitle), nameof(IsRoomEmpty), nameof(IsRoomLoading), nameof(IsRoomFailed), nameof(HasRefreshFailure), nameof(ShowRefreshAction))]
     public partial ShellPageKind CurrentPage { get; set; }
     public bool ShowRefreshAction => CurrentPage != ShellPageKind.Settings;
     private bool CanRefreshCurrentPage() => !IsRefreshBusy && ShowRefreshAction;
@@ -44,8 +44,62 @@ public sealed partial class DevicesViewModel
     public IEnumerable<SensorMetricGroup> MetricGroups => SensorReadings.GroupBy(reading => reading.Name is "温度" or "湿度" ? reading.Name : "空气质量")
         .OrderBy(group => group.Key == "温度" ? 0 : group.Key == "湿度" ? 1 : 2)
         .Select(group => new SensorMetricGroup(group.Key, group.ToArray()));
+
+    // Each completed device publishes its readings without waiting for the whole sweep.
+    private void PublishSensorReadings(DeviceRowViewModel row)
+    {
+        SensorReadingViewModel[] readings = row.SensorReadings.ToArray();
+        var present = new HashSet<string>(readings.Select(reading => reading.Name), StringComparer.Ordinal);
+        for (int index = SensorReadings.Count - 1; index >= 0; index--)
+        {
+            SensorReadingViewModel existing = SensorReadings[index];
+            if (existing.SourceId == row.Device.Did && !present.Contains(existing.Name))
+            {
+                SensorReadings.RemoveAt(index);
+            }
+        }
+
+        foreach (SensorReadingViewModel reading in readings)
+        {
+            int index = FindReadingIndex(row.Device.Did, reading.Name);
+            if (index < 0)
+            {
+                SensorReadings.Add(reading);
+            }
+            else if (SensorReadings[index].ValueText != reading.ValueText ||
+                SensorReadings[index].SourceLabel != reading.SourceLabel)
+            {
+                SensorReadings[index] = reading;
+            }
+        }
+
+        OnPropertyChanged(nameof(HasSensorReadings));
+        OnPropertyChanged(nameof(MetricGroups));
+    }
+
+    private void RemoveSensorReadings(string sourceId)
+    {
+        for (int index = SensorReadings.Count - 1; index >= 0; index--)
+        {
+            if (SensorReadings[index].SourceId == sourceId) { SensorReadings.RemoveAt(index); }
+        }
+
+        OnPropertyChanged(nameof(HasSensorReadings));
+        OnPropertyChanged(nameof(MetricGroups));
+    }
+
+    private int FindReadingIndex(string sourceId, string name)
+    {
+        for (int index = 0; index < SensorReadings.Count; index++)
+        {
+            if (SensorReadings[index].SourceId == sourceId && SensorReadings[index].Name == name) { return index; }
+        }
+
+        return -1;
+    }
     public bool IsRoomLoading => CurrentPage == ShellPageKind.Room && IsBusy;
-    public bool IsRoomFailed => CurrentPage == ShellPageKind.Room && !IsBusy && Error is not null;
+    public bool IsRoomFailed => CurrentPage == ShellPageKind.Room && !IsBusy && Error is not null && VisibleDevices.Count == 0;
+    public bool HasRefreshFailure => CurrentPage == ShellPageKind.Room && !IsBusy && Error is not null && VisibleDevices.Count > 0;
     public bool IsRoomEmpty => CurrentPage == ShellPageKind.Room && !IsBusy && Error is null && VisibleDevices.Count == 0;
     public string PageTitle => CurrentPage switch
     {
@@ -99,14 +153,13 @@ public sealed partial class DevicesViewModel
     private void RebindRoom(RoomGroup room)
     {
         ActiveRoom = room;
-        VisibleDevices.Clear();
-        foreach (DeviceRowViewModel device in room)
-        {
-            VisibleDevices.Add(device);
-        }
+        // Same instances stay put: a refresh must not rebuild the tile host.
+        SyncItems(VisibleDevices, room.ToArray());
 
         CurrentPage = ShellPageKind.Room;
         OnPropertyChanged(nameof(IsRoomEmpty));
+        OnPropertyChanged(nameof(IsRoomFailed));
+        OnPropertyChanged(nameof(HasRefreshFailure));
     }
 
     private void ClearDashboard()
@@ -129,15 +182,15 @@ public sealed partial class DevicesViewModel
         {
             if (previous.Remove(group.Key, out DeviceClassGroupViewModel? existing))
             {
-                foreach (DeviceRowViewModel device in existing.Except(group).ToArray()) { existing.Remove(device); }
-                foreach (DeviceRowViewModel device in group.Except(existing)) { existing.Add(device); }
+                SyncItems(existing, group.ToArray());
                 next.Add(existing);
             }
             else { next.Add(new DeviceClassGroupViewModel(group.Key, group)); }
         }
-        foreach (DeviceClassGroupViewModel group in previous.Values) { group.Dispose(); }
-        DeviceClasses.Clear();
-        foreach (DeviceClassGroupViewModel group in next) { DeviceClasses.Add(group); }
+
+        var stale = previous.Values.ToArray();
+        SyncItems(DeviceClasses, next);
+        foreach (DeviceClassGroupViewModel group in stale) { group.Dispose(); }
     }
 
     internal void ShowClass(DeviceClassGroupViewModel group)

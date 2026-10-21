@@ -51,7 +51,7 @@ public sealed partial class DevicesViewModel : ObservableObject
     private bool _isSigningOut;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsRoomLoading), nameof(IsRoomFailed), nameof(IsRoomEmpty), nameof(IsRefreshBusy))]
+    [NotifyPropertyChangedFor(nameof(IsRoomLoading), nameof(IsRoomFailed), nameof(HasRefreshFailure), nameof(IsRoomEmpty), nameof(IsRefreshBusy))]
     [NotifyCanExecuteChangedFor(nameof(RefreshCurrentPageCommand))]
     public partial bool IsBusy { get; set; }
 
@@ -59,7 +59,7 @@ public sealed partial class DevicesViewModel : ObservableObject
     public partial bool IsDetailBusy { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsRoomLoading), nameof(IsRoomFailed), nameof(IsRoomEmpty))]
+    [NotifyPropertyChangedFor(nameof(IsRoomLoading), nameof(IsRoomFailed), nameof(HasRefreshFailure), nameof(IsRoomEmpty))]
     public partial string? Error { get; set; }
 
     [ObservableProperty]
@@ -176,12 +176,7 @@ public sealed partial class DevicesViewModel : ObservableObject
             IReadOnlyList<MiDevice> devices = await _cloud.GetDevicesAsync(_session, selectedHome.Home, token);
             token.ThrowIfCancellationRequested();
             DeviceRowViewModel[] rows = MergeDevices(devices);
-            Rooms.Clear();
-            foreach (string roomName in selectedHome.Home.Rooms.Select(room => room.Name).Concat(rows.Select(row => row.RoomName))
-                .Where(name => !string.IsNullOrWhiteSpace(name)).Distinct().OrderBy(name => name))
-            {
-                Rooms.Add(new RoomGroup(roomName, rows.Where(row => row.RoomName == roomName).OrderBy(row => row.Name)));
-            }
+            SyncRooms(selectedHome, rows);
 
             IsEmpty = rows.Length == 0;
             SetDeviceClasses(rows);
@@ -205,6 +200,9 @@ public sealed partial class DevicesViewModel : ObservableObject
             }
 
             if (ScenePanel.RefreshCommand.CanExecute(null)) { _ = ScenePanel.RefreshCommand.ExecuteAsync(null); }
+
+            // The list is published: stop the refresh glyph and let each tile fill in.
+            IsBusy = false;
             using var concurrency = new SemaphoreSlim(4);
             await Task.WhenAll(rows.Select(async row =>
             {
@@ -214,6 +212,8 @@ public sealed partial class DevicesViewModel : ObservableObject
                     if (!row.IsRemoved)
                     {
                         await row.RefreshReadingsAsync(token);
+                        token.ThrowIfCancellationRequested();
+                        PublishSensorReadings(row);
                     }
                 }
                 finally
@@ -222,16 +222,8 @@ public sealed partial class DevicesViewModel : ObservableObject
                 }
             }));
             token.ThrowIfCancellationRequested();
-            DeviceRowViewModel[] currentRows = _deviceRows.Values.ToArray();
-            SetDeviceClasses(currentRows);
-            SensorReadings.Clear();
-            foreach (SensorReadingViewModel reading in currentRows.Where(row => !row.IsRemoved).SelectMany(row => row.SensorReadings))
-            {
-                SensorReadings.Add(reading);
-            }
-
-            OnPropertyChanged(nameof(HasSensorReadings));
-            OnPropertyChanged(nameof(MetricGroups));
+            // Incremental: only classes whose membership changed are touched.
+            SetDeviceClasses(_deviceRows.Values.ToArray());
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
@@ -249,6 +241,50 @@ public sealed partial class DevicesViewModel : ObservableObject
             {
                 IsBusy = false;
             }
+        }
+    }
+
+    private void SyncRooms(HomeRowViewModel home, DeviceRowViewModel[] rows)
+    {
+        string[] names = home.Home.Rooms.Select(room => room.Name).Concat(rows.Select(row => row.RoomName))
+            .Where(name => !string.IsNullOrWhiteSpace(name)).Distinct().OrderBy(name => name).ToArray();
+        var existing = new Dictionary<string, RoomGroup>(StringComparer.Ordinal);
+        foreach (RoomGroup room in Rooms) { existing[room.Name] = room; }
+
+        // Reuse groups so a refresh updates tiles in place instead of replaying entry animations.
+        for (int index = 0; index < names.Length; index++)
+        {
+            string name = names[index];
+            DeviceRowViewModel[] members = rows.Where(row => row.RoomName == name).OrderBy(row => row.Name).ToArray();
+            if (existing.TryGetValue(name, out RoomGroup? room))
+            {
+                SyncItems(room, members);
+                int current = Rooms.IndexOf(room);
+                if (current != index) { Rooms.Move(current, index); }
+            }
+            else
+            {
+                Rooms.Insert(index, new RoomGroup(name, members));
+            }
+        }
+
+        while (Rooms.Count > names.Length) { Rooms.RemoveAt(Rooms.Count - 1); }
+    }
+
+    private static void SyncItems<T>(ObservableCollection<T> target, IReadOnlyList<T> source)
+    {
+        var keep = new HashSet<T>(source);
+        for (int index = target.Count - 1; index >= 0; index--)
+        {
+            if (!keep.Contains(target[index])) { target.RemoveAt(index); }
+        }
+
+        for (int index = 0; index < source.Count; index++)
+        {
+            T item = source[index];
+            int current = target.IndexOf(item);
+            if (current < 0) { target.Insert(index, item); }
+            else if (current != index) { target.Move(current, index); }
         }
     }
 
@@ -276,7 +312,8 @@ public sealed partial class DevicesViewModel : ObservableObject
 
         try
         {
-            await row.EnsureInitializedAsync();
+            // Closing the sheet cancels the wait; the shared row keeps its own lifetime.
+            await row.EnsureInitializedAsync().WaitAsync(token);
             token.ThrowIfCancellationRequested();
             SpecInstance? spec = row.Spec ?? await _controller.GetSpecAsync(row.Device, token);
             token.ThrowIfCancellationRequested();
@@ -304,6 +341,8 @@ public sealed partial class DevicesViewModel : ObservableObject
                 }
             }
 
+            // Structure first; values then fill the existing editors in place.
+            RebuildDetailRows();
             await ReadCurrentValuesAsync(row.Device, _readableKeys, token);
             if (Properties.Count == 0 && ActionServices.Count == 0)
             {

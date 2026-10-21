@@ -25,6 +25,7 @@ public sealed class SpecCatalog : ISpecCatalog
     };
 
     private static readonly TimeSpan _indexCacheLifetime = TimeSpan.FromHours(24);
+    private static readonly TimeSpan _defaultRequestTimeout = TimeSpan.FromSeconds(20);
 
     private readonly HttpClient _httpClient;
     private readonly SemaphoreSlim _indexGate = new(1, 1);
@@ -32,6 +33,7 @@ public sealed class SpecCatalog : ISpecCatalog
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _specGates = new(StringComparer.Ordinal);
     private readonly SpecDiskCache? _diskCache;
     private readonly TimeProvider _timeProvider;
+    private readonly TimeSpan _requestTimeout;
     private Dictionary<string, string>? _modelTypes;
 
     /// <summary>
@@ -42,15 +44,25 @@ public sealed class SpecCatalog : ISpecCatalog
     /// Optional on-disk cache for raw spec documents; <see langword="null"/> disables disk caching.
     /// </param>
     /// <param name="timeProvider">Clock used to evaluate the instance-index cache lifetime.</param>
+    /// <param name="requestTimeout">
+    /// Deadline for one request including its body; <see langword="null"/> uses 20 seconds.
+    /// </param>
     public SpecCatalog(
         HttpClient httpClient,
         SpecDiskCache? diskCache = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        TimeSpan? requestTimeout = null)
     {
         ArgumentNullException.ThrowIfNull(httpClient);
+        if (requestTimeout <= TimeSpan.Zero || requestTimeout == Timeout.InfiniteTimeSpan)
+        {
+            throw new ArgumentOutOfRangeException(nameof(requestTimeout), requestTimeout, "The request timeout must be positive.");
+        }
+
         _httpClient = httpClient;
         _diskCache = diskCache;
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _requestTimeout = requestTimeout ?? _defaultRequestTimeout;
     }
 
     /// <inheritdoc />
@@ -145,14 +157,7 @@ public sealed class SpecCatalog : ISpecCatalog
 
     private async Task<string> FetchIndexJsonAsync(CancellationToken cancellationToken)
     {
-        using var response = await SendAsync(_indexUrl, cancellationToken).ConfigureAwait(false);
-        if (response.StatusCode != HttpStatusCode.OK)
-        {
-            throw new MiSpecException(
-                $"The miot-spec instance index request failed with HTTP {(int)response.StatusCode} ({response.ReasonPhrase}).");
-        }
-
-        var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        var json = await ReadBodyAsync(_indexUrl, cancellationToken).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(json))
         {
             throw new MiSpecException("The miot-spec instance index response was empty.");
@@ -309,20 +314,7 @@ public sealed class SpecCatalog : ISpecCatalog
     private async Task<string?> FetchSpecJsonAsync(string urn, CancellationToken cancellationToken)
     {
         var url = _instanceUrlPrefix + Uri.EscapeDataString(urn);
-        using var response = await SendAsync(url, cancellationToken).ConfigureAwait(false);
-        if (response.StatusCode == HttpStatusCode.NotFound)
-        {
-            return null;
-        }
-
-        if (response.StatusCode != HttpStatusCode.OK)
-        {
-            throw new MiSpecException(
-                $"The miot-spec definition request for '{urn}' failed with HTTP {(int)response.StatusCode} ({response.ReasonPhrase}).");
-        }
-
-        var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-        return string.IsNullOrWhiteSpace(json) ? null : json;
+        return await ReadBodyAsync(url, cancellationToken).ConfigureAwait(false);
     }
 
     private bool TryReadCachedSpec(string urn, [NotNullWhen(true)] out SpecInstance? spec)
@@ -518,13 +510,32 @@ public sealed class SpecCatalog : ISpecCatalog
         return string.IsNullOrWhiteSpace(comment) ? null : comment;
     }
 
-    private async Task<HttpResponseMessage> SendAsync(string url, CancellationToken cancellationToken)
+    /// <summary>
+    /// Sends one request and reads its whole body under a deadline. ResponseHeadersRead
+    /// leaves the body outside HttpClient.Timeout, so the linked deadline owns both phases.
+    /// </summary>
+    private async Task<string?> ReadBodyAsync(string url, CancellationToken cancellationToken)
     {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(_requestTimeout);
         try
         {
-            return await _httpClient
-                .GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+            using var response = await _httpClient
+                .GetAsync(url, HttpCompletionOption.ResponseHeadersRead, deadline.Token)
                 .ConfigureAwait(false);
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return null;
+            }
+
+            if (response.StatusCode != HttpStatusCode.OK)
+            {
+                throw new MiSpecException(
+                    $"The miot-spec request to '{url}' failed with HTTP {(int)response.StatusCode} ({response.ReasonPhrase}).");
+            }
+
+            var json = await response.Content.ReadAsStringAsync(deadline.Token).ConfigureAwait(false);
+            return string.IsNullOrWhiteSpace(json) ? null : json;
         }
         catch (HttpRequestException ex)
         {

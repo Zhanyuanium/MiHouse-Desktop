@@ -30,6 +30,7 @@ public sealed partial class DevicesViewModel
         foreach (DeviceRowViewModel row in _deviceRows.Values.Where(row => !present.Contains(row.Device.Did)).ToArray())
         {
             row.IsRemoved = true;
+            RemoveSensorReadings(row.Device.Did);
             if (!row.HasOperations)
             {
                 DropDevice(row);
@@ -46,11 +47,6 @@ public sealed partial class DevicesViewModel
             if (e.PropertyName == nameof(DeviceRowViewModel.IsRemoved) && ReferenceEquals(SelectedDevice, device))
             {
                 DetailMessage = device.IsRemoved ? "设备已从当前家庭移除" : null;
-            }
-
-            if (e.PropertyName == nameof(DeviceRowViewModel.Error) && device.IsRemoved && device.Error == "设备已不在当前家庭")
-            {
-                Error = device.Error;
             }
         }
 
@@ -86,9 +82,12 @@ public sealed partial class DevicesViewModel
         }
 
         VisibleDevices.Remove(row);
+        RemoveSensorReadings(row.Device.Did);
         row.StopOperations();
         IsEmpty = _deviceRows.Count == 0;
         OnPropertyChanged(nameof(IsRoomEmpty));
+        OnPropertyChanged(nameof(IsRoomFailed));
+        OnPropertyChanged(nameof(HasRefreshFailure));
     }
 
     private void ResetDeviceOperations()

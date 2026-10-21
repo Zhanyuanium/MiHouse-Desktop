@@ -25,7 +25,9 @@ public sealed partial class DevicesViewModel
     partial void OnIsAdvancedExpandedChanged(bool value) => RebuildDetailRows();
     private void OnDetailPropertiesChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        if (Properties.Count == 0) { DetailRows.Clear(); }
+        // Rows must appear as soon as definitions are known, before values are read.
+        if (Properties.Count == 0) { DetailRows.Clear(); return; }
+        RebuildDetailRows();
     }
     private void RebuildDetailRows()
     {
@@ -45,9 +47,5 @@ public sealed partial class DevicesViewModel
         }
         foreach (ActionServiceViewModel service in ActionServices.Where(service => service.IsAdvanced == advanced)) { DetailRows.Add(service); }
     }
-    partial void OnIsDetailBusyChanged(bool value)
-    {
-        OnPropertyChanged(nameof(HasDetailStatus));
-        if (!value) { RebuildDetailRows(); }
-    }
+    partial void OnIsDetailBusyChanged(bool value) => OnPropertyChanged(nameof(HasDetailStatus));
 }

@@ -431,6 +431,46 @@ public sealed class SpecCatalogTests : IDisposable
         Assert.Equal(1, offline.CountRequests("/instances"));
     }
 
+    [Fact]
+    public async Task GetForModelAsync_StalledIndexBody_FailsWithinRequestTimeout()
+    {
+        var handler = new StubHandler(_ => StalledResponse());
+        var catalog = new SpecCatalog(
+            new HttpClient(handler),
+            requestTimeout: TimeSpan.FromMilliseconds(200));
+
+        var exception = await Assert.ThrowsAsync<MiSpecException>(
+            () => catalog.GetForModelAsync("test.light.one", CancellationToken.None))
+            .WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Contains("timed out", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.IsAssignableFrom<OperationCanceledException>(exception.InnerException);
+    }
+
+    [Fact]
+    public async Task GetAsync_StalledInstanceBody_FailsWithinRequestTimeout()
+    {
+        var handler = new StubHandler(_ => StalledResponse());
+        var catalog = new SpecCatalog(
+            new HttpClient(handler),
+            requestTimeout: TimeSpan.FromMilliseconds(200));
+
+        var exception = await Assert.ThrowsAsync<MiSpecException>(
+            () => catalog.GetAsync(_deviceType, CancellationToken.None))
+            .WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Contains("timed out", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.IsAssignableFrom<OperationCanceledException>(exception.InnerException);
+    }
+
+    private static HttpResponseMessage StalledResponse()
+    {
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(new StalledStream()),
+        };
+    }
+
     private SpecCatalog CreateOnlineCatalog(DateTimeOffset now)
     {
         var handler = new StubHandler(request => IsIndexRequest(request)
@@ -521,6 +561,40 @@ public sealed class SpecCatalogTests : IDisposable
     private sealed class StubTimeProvider(DateTimeOffset utcNow) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => utcNow;
+    }
+
+    // Headers arrive, but the body never completes until the read token is cancelled.
+    private sealed class StalledStream : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+            return 0;
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        {
+            return ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     public void Dispose()

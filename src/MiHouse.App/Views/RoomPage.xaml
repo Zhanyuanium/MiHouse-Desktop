@@ -9,10 +9,14 @@
           Visibility="{Binding IsRoomFailed, Converter={StaticResource BooleanVisibilityConverter}}" />
         <TextBlock Text="这个房间还没有设备" Style="{StaticResource SecondaryTextStyle}" Margin="0,24,0,0"
           Visibility="{Binding IsRoomEmpty, Converter={StaticResource BooleanVisibilityConverter}}" />
+        <InfoBar Severity="Warning" Message="刷新失败，保留已有数据" IsClosable="False" Margin="0,12,0,0"
+          IsOpen="{Binding HasRefreshFailure}" AutomationProperties.LiveSetting="Polite"
+          Visibility="{Binding HasRefreshFailure, Converter={StaticResource BooleanVisibilityConverter}}" />
       </StackPanel>
     </views:PageLayout.HeaderContent>
     <views:PageLayout.ItemTemplate><DataTemplate>
       <ItemsControl ItemsSource="{Binding Devices}" HorizontalContentAlignment="Stretch" Margin="{Binding BottomSpacing}">
+        <ItemsControl.ItemContainerTransitions><TransitionCollection /></ItemsControl.ItemContainerTransitions>
         <ItemsControl.ItemsPanel><ItemsPanelTemplate><views:ResponsiveGridPanel MinimumItemWidth="1" MaximumColumns="{Binding Columns}" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate><DataTemplate><views:DeviceTile DeviceOpened="OnDeviceOpened" /></DataTemplate></ItemsControl.ItemTemplate>
       </ItemsControl>

@@ -20,6 +20,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject
     private MiDevice _device;
     private bool _syncing;
     private bool _stopped;
+    private bool _hasLoadedValues;
     private Task? _initialization;
 
     public DeviceRowViewModel(MiDevice device, IDeviceController controller, CancellationToken homeToken)
@@ -50,27 +51,30 @@ public sealed partial class DeviceRowViewModel : ObservableObject
     internal SpecInstance? Spec { get; private set; }
     public ObservableCollection<SensorReadingViewModel> SensorReadings { get; } = [];
     public bool HasPower => Power is not null;
-    public string TileStateText => IsLoading && !IsRemoved ? string.Empty :
+    public string TileStateText => IsLoading && !IsRemoved && !_hasLoadedValues ? string.Empty :
         Power is { HasValue: true, IsWriteUnconfirmed: false } && !IsRemoved ? string.Empty :
-        !string.IsNullOrEmpty(StateText) ? StateText :
+        !IsLoading && !string.IsNullOrEmpty(StateText) ? StateText :
         SensorReadings.OrderBy(reading => reading.Name == "温度" ? 0 : reading.Name == "湿度" ? 1 : 2)
             .Select(reading => $"{reading.Name} {reading.ValueText}").FirstOrDefault() ?? string.Empty;
+    // The tile reserves the state line and shows this ring only until a value exists.
+    public bool ShowsReadingPlaceholder => IsLoading && !IsRemoved && string.IsNullOrEmpty(TileStateText) &&
+        Power is not { HasValue: true } && SensorReadings.Count == 0;
     internal CancellationToken OperationToken => _token;
     internal IEnumerable<PropertyRowViewModel> PropertyRows => _properties.Values;
     internal bool HasOperations => IsChanging || _properties.Values.Any(row => row.IsBusy) ||
         (_actions?.SelectMany(service => service.Actions).Any(row => row.IsBusy) ?? false);
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanToggle), nameof(StateText), nameof(TileStateText), nameof(QuickStatusText), nameof(PowerHelpText), nameof(PowerAccessibleName))]
+    [NotifyPropertyChangedFor(nameof(CanToggle), nameof(StateText), nameof(TileStateText), nameof(ShowsReadingPlaceholder), nameof(QuickStatusText), nameof(PowerHelpText), nameof(PowerAccessibleName))]
     public partial bool IsRemoved { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PowerAccessibleName))]
-    [NotifyPropertyChangedFor(nameof(HasPower), nameof(TileStateText))]
+    [NotifyPropertyChangedFor(nameof(HasPower), nameof(TileStateText), nameof(ShowsReadingPlaceholder))]
     public partial PropertyRowViewModel? Power { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanToggle), nameof(StateText), nameof(TileStateText), nameof(QuickStatusText), nameof(PowerHelpText), nameof(PowerAccessibleName))]
+    [NotifyPropertyChangedFor(nameof(CanToggle), nameof(StateText), nameof(TileStateText), nameof(ShowsReadingPlaceholder), nameof(QuickStatusText), nameof(PowerHelpText), nameof(PowerAccessibleName))]
     public partial bool IsLoading { get; set; }
 
     [ObservableProperty]
@@ -174,6 +178,11 @@ public sealed partial class DeviceRowViewModel : ObservableObject
             }
 
             await EnsureInitializedAsync().WaitAsync(token);
+        }
+
+        // Definitions are ready (or initialization failed and set Error); only now read values.
+        if (Spec is null)
+        {
             return;
         }
 
@@ -230,7 +239,6 @@ public sealed partial class DeviceRowViewModel : ObservableObject
                 (item.Property.Format.StartsWith("int", StringComparison.Ordinal) ||
                     item.Property.Format.StartsWith("uint", StringComparison.Ordinal) || item.Property.Format is "float" or "double") &&
                 SensorLabel(item.Property.Type) is not null).ToArray();
-            await ReadSnapshotAsync(_token);
         }
         catch (OperationCanceledException) when (_token.IsCancellationRequested)
         {
@@ -255,6 +263,9 @@ public sealed partial class DeviceRowViewModel : ObservableObject
             .Concat(Power is { Property.Readable: true } ? [Power.Key] : Array.Empty<MiPropertyKey>()).Distinct().ToArray();
         if (keys.Length == 0)
         {
+            _hasLoadedValues = true;
+            OnPropertyChanged(nameof(TileStateText));
+            OnPropertyChanged(nameof(ShowsReadingPlaceholder));
             return;
         }
 
@@ -273,10 +284,14 @@ public sealed partial class DeviceRowViewModel : ObservableObject
                 value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out double number) && double.IsFinite(number))
             {
                 SensorReadings.Add(new SensorReadingViewModel(SensorLabel(sensor.Property.Type)!,
-                    number.ToString("0.##", CultureInfo.CurrentCulture), $"{Name} · {RoomName} · {DateTime.Now:t}"));
+                    number.ToString("0.##", CultureInfo.CurrentCulture), $"{Name} · {RoomName} · {DateTime.Now:t}")
+                { SourceId = Device.Did });
             }
         }
+
+        _hasLoadedValues = true;
         OnPropertyChanged(nameof(TileStateText));
+        OnPropertyChanged(nameof(ShowsReadingPlaceholder));
     }
 
     private static bool IsPowerType(string type)
@@ -317,6 +332,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject
         OnPropertyChanged(nameof(CanToggle));
         OnPropertyChanged(nameof(StateText));
         OnPropertyChanged(nameof(TileStateText));
+        OnPropertyChanged(nameof(ShowsReadingPlaceholder));
         OnPropertyChanged(nameof(QuickStatusText));
         OnPropertyChanged(nameof(PowerHelpText));
     }
@@ -459,4 +475,5 @@ public sealed partial class SensorReadingViewModel(string name, string valueText
     public string ValueText { get; } = valueText;
     public string MetricValueText => Name == "PM2.5" ? $"PM2.5 · {ValueText}" : ValueText;
     public string SourceLabel { get; } = sourceLabel;
+    internal string SourceId { get; init; } = string.Empty;
 }

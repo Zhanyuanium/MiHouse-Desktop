@@ -38,6 +38,7 @@
       <Grid Height="32" Margin="16,16,16,0"><TextBlock Text="快捷开关" FontWeight="SemiBold" VerticalAlignment="Center" /><TextBlock Text="按类别控制" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></Grid>
       <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Visible" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch" AutomationProperties.Name="设备分类卡片">
         <Border Padding="16"><ItemsControl ItemsSource="{Binding DeviceClasses}" HorizontalContentAlignment="Stretch" ItemsPanel="{StaticResource DashboardCardsPanel}">
+         <ItemsControl.ItemContainerTransitions><TransitionCollection /></ItemsControl.ItemContainerTransitions>
          <ItemsControl.ItemTemplate><DataTemplate><Button DataContext="{Binding Card}" Style="{StaticResource SectionTileButtonStyle}" Click="OnGroupCardClick" AutomationProperties.Name="{Binding Name}">
           <Grid><views:FeedbackHalo Level="{Binding HaloLevel}" />
           <Grid ColumnSpacing="8" RowSpacing="8" VerticalAlignment="Center" Padding="{StaticResource DashboardCardPadding}"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="48" /></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>

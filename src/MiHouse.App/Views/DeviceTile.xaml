@@ -21,7 +21,11 @@
               <StackPanel Grid.Column="1" Spacing="3">
                 <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{Binding Name}" />
                 <TextBlock x:Name="RoomLine" Text="{Binding RoomStatusText}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-                <StackPanel x:Name="StateLine">
+                <StackPanel x:Name="StateLine" MinHeight="16">
+                  <ProgressRing Width="12" Height="12" HorizontalAlignment="Left"
+                    IsActive="{Binding ShowsReadingPlaceholder}"
+                    Visibility="{Binding ShowsReadingPlaceholder, Converter={StaticResource BooleanVisibilityConverter}}"
+                    AutomationProperties.Name="正在读取设备状态" />
                   <TextBlock Text="{Binding TileStateText}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Visibility="{Binding TileStateText, Converter={StaticResource HasTextConverter}}"
                     TextWrapping="Wrap" ToolTipService.ToolTip="{Binding TileStateText}" AutomationProperties.LiveSetting="Polite" />
