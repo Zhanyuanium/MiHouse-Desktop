@@ -42,37 +42,36 @@
      </Grid>
    </StackPanel></Border>
    <views:ResponsiveGridPanel MaximumColumns="2" MinimumItemWidth="340">
-     <Border Style="{StaticResource SectionSurfaceStyle}" Padding="0" Height="392">
+      <Border x:Name="ScenesSection" Style="{StaticResource SectionSurfaceStyle}" Padding="0" Height="416">
       <Grid><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-       <Grid Height="32" Margin="16,16,16,0"><TextBlock Text="场景" FontWeight="SemiBold" VerticalAlignment="Center" /><Button Content="查看全部" Command="{Binding NavigateScenesCommand}" Style="{StaticResource QuietButtonStyle}" HorizontalAlignment="Right" IsEnabled="{Binding HasSelectedHome}" /></Grid>
-      <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Visible" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch" AutomationProperties.Name="场景卡片">
-        <Border Padding="16"><StackPanel DataContext="{Binding ScenePanel}" Spacing="8">
+        <Grid Height="32" Margin="16,16,16,0"><TextBlock Text="场景" FontWeight="SemiBold" VerticalAlignment="Center" /><Button Content="查看全部" Click="OnScenesOpened" Style="{StaticResource QuietButtonStyle}" HorizontalAlignment="Right" IsEnabled="{Binding HasSelectedHome}" /></Grid>
+       <Border Grid.Row="1" Padding="16"><ScrollViewer VerticalScrollMode="Enabled" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch" AutomationProperties.Name="场景卡片">
+         <StackPanel DataContext="{Binding ScenePanel}" Spacing="8">
         <TextBlock Text="还没有手动场景" Style="{StaticResource SecondaryTextStyle}" Visibility="{Binding IsEmpty, Converter={StaticResource BooleanVisibilityConverter}}" />
         <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" Visibility="{Binding Notice, Converter={StaticResource HasTextConverter}}" />
         <InfoBar Severity="Error" Message="{Binding Error}" IsOpen="{Binding Error, Converter={StaticResource HasTextConverter}}" Visibility="{Binding Error, Converter={StaticResource HasTextConverter}}" />
         <ItemsControl ItemsSource="{Binding Scenes}" HorizontalContentAlignment="Stretch"
           ItemTemplate="{StaticResource SceneCardTemplate}" ItemsPanel="{StaticResource DashboardCardsPanel}" />
-        </StackPanel></Border>
-      </ScrollViewer>
+         </StackPanel>
+       </ScrollViewer></Border>
      </Grid>
     </Border>
-     <Border Style="{StaticResource SectionSurfaceStyle}" Padding="0" Height="392">
+      <Border x:Name="DeviceClassesSection" Style="{StaticResource SectionSurfaceStyle}" Padding="0" Height="416">
       <Grid><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-      <Grid Height="32" Margin="16,16,16,0"><TextBlock Text="快捷开关" FontWeight="SemiBold" VerticalAlignment="Center" /><TextBlock Text="按类别控制" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></Grid>
-      <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Visible" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch" AutomationProperties.Name="设备分类卡片">
-        <Border Padding="16"><ItemsControl ItemsSource="{Binding DeviceClasses}" HorizontalContentAlignment="Stretch" ItemsPanel="{StaticResource DashboardCardsPanel}">
+       <Grid Height="32" Margin="16,16,16,0"><TextBlock Text="设备类别" FontWeight="SemiBold" VerticalAlignment="Center" /></Grid>
+       <Border Grid.Row="1" Padding="16"><ScrollViewer VerticalScrollMode="Enabled" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch" AutomationProperties.Name="设备类别卡片">
+         <ItemsControl ItemsSource="{Binding DeviceClasses}" HorizontalContentAlignment="Stretch" ItemsPanel="{StaticResource DashboardCardsPanel}">
          <ItemsControl.ItemContainerTransitions><TransitionCollection /></ItemsControl.ItemContainerTransitions>
          <ItemsControl.ItemTemplate><DataTemplate><Button DataContext="{Binding Card}" Style="{StaticResource SectionTileButtonStyle}" Click="OnGroupCardClick" AutomationProperties.Name="{Binding Name}">
           <Grid><views:FeedbackHalo Level="{Binding HaloLevel}" />
-          <Grid ColumnSpacing="8" RowSpacing="8" VerticalAlignment="Center" Padding="{StaticResource DashboardCardPadding}"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="48" /></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+           <Grid ColumnSpacing="8" RowSpacing="8" VerticalAlignment="Center" Padding="{StaticResource DashboardCardPadding}"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="48" /></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
           <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center" />
           <views:GroupPowerSwitch Grid.Column="1" State="{Binding PowerState}" IsEnabled="{Binding CanToggle}" PowerRequested="OnGroupPowerRequested" AutomationProperties.Name="{Binding Name}" Visibility="{Binding HasPower, Converter={StaticResource BooleanVisibilityConverter}}" />
           <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Summary}" FontSize="12" Style="{StaticResource SecondaryTextStyle}" />
-          <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding Notice}" FontSize="12" TextWrapping="Wrap" Visibility="{Binding Notice, Converter={StaticResource HasTextConverter}}" AutomationProperties.LiveSetting="Polite" />
           </Grid></Grid>
         </Button></DataTemplate></ItemsControl.ItemTemplate>
-        </ItemsControl></Border>
-      </ScrollViewer>
+         </ItemsControl>
+       </ScrollViewer></Border>
      </Grid>
     </Border>
    </views:ResponsiveGridPanel>

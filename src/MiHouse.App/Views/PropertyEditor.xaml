@@ -17,7 +17,6 @@
    </ComboBox>
    <Slider Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" StepFrequency="{Binding SliderStepFrequency}" SnapsTo="StepValues" Value="{Binding NumericValue, Mode=OneWay}" ValueChanged="OnRange" KeyUp="OnRangeKeyUp" LostFocus="OnRangeLostFocus" IsEnabled="{Binding CanEdit}" Visibility="{Binding IsEditableRange, Converter={StaticResource BooleanVisibilityConverter}}" AutomationProperties.Name="{Binding Name}" Loaded="OnEditorLoaded" Unloaded="OnEditorUnloaded" DataContextChanged="OnEditorContextChanged" />
    <TextBox Text="{Binding EditorText, Mode=OneWay}" LostFocus="OnTextCommit" KeyDown="OnTextKeyDown" IsEnabled="{Binding CanEdit}" Visibility="{Binding IsCommitText, Converter={StaticResource BooleanVisibilityConverter}}" AutomationProperties.Name="{Binding Name}" Loaded="OnEditorLoaded" Unloaded="OnEditorUnloaded" DataContextChanged="OnEditorContextChanged" />
-   <TextBlock Text="已写入，当前值未确认" FontSize="12" Style="{StaticResource SecondaryTextStyle}" Visibility="{Binding IsWriteUnconfirmed, Converter={StaticResource BooleanVisibilityConverter}}" AutomationProperties.LiveSetting="Polite" />
    <ProgressBar IsIndeterminate="True" Visibility="{Binding IsBusy, Converter={StaticResource BooleanVisibilityConverter}}" />
    <InfoBar Severity="Error" IsClosable="False" IsOpen="{Binding Error, Converter={StaticResource HasTextConverter}}" Visibility="{Binding Error, Converter={StaticResource HasTextConverter}}" Message="{Binding Error}" />
   </StackPanel></Border>

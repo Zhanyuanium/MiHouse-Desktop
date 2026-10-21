@@ -35,13 +35,7 @@ public sealed partial class DeviceClassGroupViewModel : ObservableCollection<Dev
         }
     }
     public double HaloLevel => PowerState switch { GroupPowerState.On => 1, GroupPowerState.Partial => 0.5, _ => 0 };
-    public string Summary => $"{Count} 台设备 · " + (IsBusy ? "正在写入" : !HasPower ? "查看设备" : PowerState switch
-    {
-        GroupPowerState.On => "全部开启",
-        GroupPowerState.Off => "全部关闭",
-        GroupPowerState.Partial => "部分开启",
-        _ => "状态未完整读取"
-    });
+    public string Summary => $"{Count} 台设备";
     protected override void InsertItem(int index, DeviceRowViewModel item)
     {
         base.InsertItem(index, item);
@@ -75,7 +69,6 @@ public sealed partial class DeviceClassGroupViewModel : ObservableCollection<Dev
         if (!CanToggle) { return; }
         IsBusy = true;
         Notice = null;
-        int skipped = 0;
         using var concurrency = new SemaphoreSlim(4);
         try
         {
@@ -87,18 +80,17 @@ public sealed partial class DeviceClassGroupViewModel : ObservableCollection<Dev
                 try
                 {
                     // Recheck after waiting; a refresh may remove a queued device.
-                    if (device.IsRemoved || !device.CanToggle) { if (device.HasPower) { skipped++; } return null; }
+                    if (device.IsRemoved || !device.CanToggle) { return null; }
                     if (device.IsOn == desired) { return null; }
                     await device.SetPowerAsync(desired);
-                    return device.Power?.Error is { } error ? $"{device.Name}：{error}" :
-                        device.Power?.IsWriteUnconfirmed == true ? $"{device.Name}：已写入，当前值未确认" : null;
+                    return device.Power?.Error is { } error ? $"{device.Name}：{error}" : null;
                 }
                 catch (Exception ex) { return $"{device.Name}：{DeviceErrorText.Describe(ex)}"; }
                 finally { concurrency.Release(); }
             }));
             var notices = results.OfType<string>().ToList();
-            if (skipped > 0) { notices.Add($"{skipped} 台已移除、离线、忙碌或状态不可用，未写入"); }
-            Notice = notices.Count > 0 ? string.Join("；", notices) : "已完成可控设备写入";
+            // Only real errors are announced; a successful or partial write is silent.
+            Notice = notices.Count > 0 ? string.Join("；", notices) : null;
         }
         finally { IsBusy = false; }
     }

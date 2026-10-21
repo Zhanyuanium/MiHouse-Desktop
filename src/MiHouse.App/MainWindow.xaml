@@ -9,14 +9,14 @@
   </Window.SystemBackdrop>
   <Grid Background="Transparent">
     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-    <TitleBar x:Name="WindowTitleBar" Height="48" BorderThickness="0" Background="Transparent" IsBackButtonVisible="False">
+    <TitleBar x:Name="WindowTitleBar" Height="48" BorderThickness="0" Background="Transparent" IsBackButtonVisible="False" PaneToggleRequested="OnTitleBarPaneToggleRequested">
       <TitleBar.Resources><x:Double x:Key="TitleBarMinDragRegionWidth">0</x:Double></TitleBar.Resources>
       <TitleBar.LeftHeader>
-        <ComboBox x:Name="HomeSwitcher" Width="192" MinWidth="0" Margin="8,0" HorizontalContentAlignment="Stretch" ItemsSource="{Binding Homes}" ToolTipService.ToolTip="{Binding HeaderTitle}"
+        <ComboBox x:Name="HomeSwitcher" Width="192" MinWidth="0" Margin="0" HorizontalContentAlignment="Stretch" ItemsSource="{Binding Homes}" ToolTipService.ToolTip="{Binding HeaderTitle}"
           SelectedItem="{Binding SelectedHome, Mode=TwoWay}" IsEnabled="{Binding HasHomes}" PlaceholderText="家庭"
           AutomationProperties.Name="选择家庭" Visibility="Collapsed">
           <ComboBox.ItemTemplate><DataTemplate>
-            <Grid Width="140" ColumnSpacing="8">
+            <Grid ColumnSpacing="8">
               <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
               <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
               <Border Grid.Column="1" Background="{ThemeResource SubtleFillColorSecondaryBrush}" CornerRadius="4" Padding="6,2" VerticalAlignment="Center"
@@ -28,7 +28,7 @@
         </ComboBox>
       </TitleBar.LeftHeader>
       <TitleBar.RightHeader>
-        <Button Command="{Binding RefreshCurrentPageCommand}" Style="{StaticResource QuietButtonStyle}" Width="40" Height="36" Margin="0,0,8,0"
+        <Button x:Name="RefreshButton" Command="{Binding RefreshCurrentPageCommand}" Style="{StaticResource QuietButtonStyle}" Width="40" Height="36" Margin="0,0,8,0"
           Visibility="{Binding ShowRefreshAction, Converter={StaticResource BooleanVisibilityConverter}, FallbackValue=Collapsed}"
           AutomationProperties.Name="刷新当前页面" ToolTipService.ToolTip="刷新当前页面">
           <views:RefreshGlyph IsBusy="{Binding IsRefreshBusy}" />

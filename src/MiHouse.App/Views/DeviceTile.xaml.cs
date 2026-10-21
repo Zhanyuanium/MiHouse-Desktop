@@ -114,7 +114,7 @@ public sealed partial class DeviceTile : UserControl
         Surface.Padding = new Thickness(0);
         Surface.MinHeight = IsCompact ? 64 : 96;
         Surface.Margin = IsCompact ? new Thickness(0, 0, 0, 8) : new Thickness(0);
-        RoomLine.SetBinding(TextBlock.TextProperty, new Binding { Path = new PropertyPath(IsCompact ? nameof(DeviceRowViewModel.QuickStatusText) : nameof(DeviceRowViewModel.RoomStatusText)) });
+        RoomLine.SetBinding(TextBlock.TextProperty, new Binding { Path = new PropertyPath(nameof(DeviceRowViewModel.RoomStatusText)) });
         StateLine.Visibility = IsCompact ? Visibility.Collapsed : Visibility.Visible;
         Grid.SetColumnSpan(OpenButton, _observedDevice?.HasPower == true ? 1 : 2);
     }

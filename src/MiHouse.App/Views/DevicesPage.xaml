@@ -9,7 +9,6 @@
    <Button Content="{Binding Name}" Command="{Binding Command}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Visibility="{Binding IsAdvanced, Converter={StaticResource BooleanVisibilityConverter}}" />
   </StackPanel></DataTemplate>
   <views:DetailTemplateSelector x:Key="DetailTemplates" PropertyTemplate="{StaticResource PropertyTemplate}" ActionTemplate="{StaticResource ActionTemplate}" HeaderTemplate="{StaticResource SectionTemplate}" />
-   <Thickness x:Key="NavigationViewButtonHolderGridMargin">0</Thickness>
    <x:Double x:Key="PaneToggleButtonHeight">36</x:Double>
    <Style x:Key="RoomTabItemStyle" TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
     <Setter Property="MinHeight" Value="0" /><Setter Property="Height" Value="{StaticResource PaneToggleButtonHeight}" />
@@ -18,25 +17,27 @@
    </Style>
  </Page.Resources>
  <NavigationView x:Name="ShellNavigation" PaneDisplayMode="Auto" OpenPaneLength="208" CompactPaneLength="56" ExpandedModeThresholdWidth="1200" CompactModeThresholdWidth="700"
-  IsSettingsVisible="False" IsBackButtonVisible="Collapsed" AlwaysShowHeader="False" IsTitleBarAutoPaddingEnabled="False"
-  ItemInvoked="OnNavigationInvoked" PaneOpened="OnNavigationPaneChanged" PaneClosed="OnNavigationPaneChanged">
+   IsSettingsVisible="False" IsBackButtonVisible="Collapsed" IsPaneToggleButtonVisible="False" AlwaysShowHeader="False" IsTitleBarAutoPaddingEnabled="False"
+   ItemInvoked="OnNavigationInvoked" PaneOpening="OnNavigationPaneOpening" PaneClosing="OnNavigationPaneClosing" PaneOpened="OnNavigationPaneChanged" PaneClosed="OnNavigationPaneChanged">
   <NavigationView.MenuItems>
-   <NavigationViewItem x:Name="NativeHome" Content="首页" Tag="Home" Icon="Home" />
+    <NavigationViewItem x:Name="NativeHome" Content="首页" Tag="Home" Icon="Home" Loaded="OnNavigationItemLoaded" />
    <NavigationViewItem x:Name="NativeScenes" Content="场景" Tag="Scenes" Icon="Play" />
    <NavigationViewItem x:Name="NativeActivity" Content="活动" Tag="Activity" Icon="Clock" />
    <NavigationViewItem x:Name="NativeSettings" Content="设置" Tag="Settings" Icon="Setting" />
    <NavigationViewItemSeparator x:Name="RoomSeparator" />
    <NavigationViewItem x:Name="NativeRooms" Content="房间" SelectsOnInvoked="False" IsExpanded="True" />
   </NavigationView.MenuItems>
-    <Grid Background="{ThemeResource LayerFillColorDefaultBrush}"><Grid.RowDefinitions><RowDefinition x:Name="NavigationRow" Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-      <Grid x:Name="RoomStrip" Margin="16,0,16,0" Height="{StaticResource PaneToggleButtonHeight}" SizeChanged="OnRoomStripSizeChanged">
+    <Grid x:Name="NavigationContent" Background="{ThemeResource LayerFillColorDefaultBrush}"><Grid.RowDefinitions><RowDefinition x:Name="NavigationRow" Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+       <Grid x:Name="RoomStrip" Margin="16,0,16,0" Height="{StaticResource PaneToggleButtonHeight}" SizeChanged="OnRoomStripSizeChanged">
+     <Grid.Transitions><TransitionCollection /></Grid.Transitions>
     <Grid.ColumnDefinitions><ColumnDefinition Width="24" /><ColumnDefinition Width="*" /><ColumnDefinition Width="24" /></Grid.ColumnDefinitions>
       <Button x:Name="PreviousRooms" Width="24" Height="{StaticResource PaneToggleButtonHeight}" MinWidth="0" Padding="0" VerticalContentAlignment="Center" Style="{StaticResource QuietButtonStyle}" Click="OnPreviousRooms" AutomationProperties.Name="向左滚动房间"><FontIcon Glyph="&#xE76B;" FontSize="12" /></Button>
     <ScrollViewer x:Name="RoomScroll" Grid.Column="1" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" HorizontalScrollMode="Enabled" VerticalScrollMode="Disabled" HorizontalContentAlignment="Left" ViewChanged="OnRoomScrollChanged" SizeChanged="OnRoomScrollSizeChanged" Loaded="OnRoomScrollLoaded" AutomationProperties.Name="所有房间，一次点击切换">
-        <ListView x:Name="RoomChips" SelectionMode="Single" SelectionChanged="OnRoomSelectionChanged" Height="{StaticResource PaneToggleButtonHeight}" Padding="0" BorderThickness="0"
+         <ListView x:Name="RoomChips" SelectionMode="Single" SelectionChanged="OnRoomSelectionChanged" Height="{StaticResource PaneToggleButtonHeight}" Padding="0" BorderThickness="0"
           ItemContainerStyle="{StaticResource RoomTabItemStyle}"
          ScrollViewer.HorizontalScrollMode="Disabled" ScrollViewer.VerticalScrollMode="Disabled"
-         ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+          ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+         <ListView.ItemContainerTransitions><TransitionCollection /></ListView.ItemContainerTransitions>
         <ListView.Resources><x:Boolean x:Key="ListViewItemSelectionIndicatorVisualEnabled">False</x:Boolean></ListView.Resources>
         <ListView.ItemsPanel><ItemsPanelTemplate><ItemsStackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ListView.ItemsPanel>
         <ListView.ItemTemplate><DataTemplate><Grid Height="{StaticResource PaneToggleButtonHeight}" Loaded="OnRoomChipLoaded">
@@ -55,7 +56,7 @@
     <InfoBar Visibility="{Binding Error, Converter={StaticResource HasTextConverter}}" IsOpen="{Binding Error, Converter={StaticResource HasTextConverter}}" IsClosable="False" Severity="Error" Title="操作未完成" Message="{Binding Error}" />
    </StackPanel>
    <Grid x:Name="DetailsHost" Grid.Row="2" SizeChanged="OnDetailsHostSizeChanged"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-    <Frame x:Name="ScreenFrame" Background="Transparent" />
+     <Frame x:Name="ScreenFrame" Background="Transparent"><Frame.ContentTransitions><TransitionCollection /></Frame.ContentTransitions></Frame>
     <Border x:Name="SheetScrim" Grid.ColumnSpan="2" Background="{ThemeResource SmokeFillColorDefaultBrush}" Visibility="Collapsed" Tapped="OnSheetScrimTapped" />
     <Border x:Name="DeviceSheet" Grid.ColumnSpan="2" Width="420" HorizontalAlignment="Right" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" Visibility="{Binding HasSelection, Converter={StaticResource BooleanVisibilityConverter}}" AutomationProperties.Name="设备详情">
      <Grid Padding="16,12,0,0" RowSpacing="8"><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>

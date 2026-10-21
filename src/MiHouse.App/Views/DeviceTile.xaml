@@ -26,9 +26,11 @@
                     IsActive="{Binding ShowsReadingPlaceholder}"
                     Visibility="{Binding ShowsReadingPlaceholder, Converter={StaticResource BooleanVisibilityConverter}}"
                     AutomationProperties.Name="正在读取设备状态" />
+                  <Grid Visibility="{Binding Power.IsWriteUnconfirmed, Converter={StaticResource BooleanVisibilityConverter}, ConverterParameter=Inverse, FallbackValue=Visible}">
                   <TextBlock Text="{Binding TileStateText}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Visibility="{Binding TileStateText, Converter={StaticResource HasTextConverter}}"
-                    TextWrapping="Wrap" ToolTipService.ToolTip="{Binding TileStateText}" AutomationProperties.LiveSetting="Polite" />
+                     TextWrapping="Wrap" ToolTipService.ToolTip="{Binding TileStateText}" AutomationProperties.LiveSetting="Polite" />
+                  </Grid>
                 </StackPanel>
               </StackPanel>
             </Grid>

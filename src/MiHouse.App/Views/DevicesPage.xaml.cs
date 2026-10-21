@@ -35,13 +35,57 @@ public sealed partial class DevicesPage : Page
         _activityPage = new ActivityPage { DataContext = viewModel };
         _settingsPage = new SettingsPage { DataContext = viewModel };
         _scenesPage = new ScenesPage { DataContext = viewModel.ScenePanel };
-        _homePage.GroupOpened += (_, group) => ViewModel.ShowClass(group);
+        _homePage.GroupOpened += (_, group) => NavigateWithEntrance(() => ViewModel.ShowClass(group));
+        _homePage.ScenesOpened += (_, _) => NavigateWithEntrance(() => ViewModel.NavigateScenesCommand.Execute(null));
         _roomPage.DeviceOpened += OnDeviceOpened;
         PresentPage();
     }
 
     public DevicesViewModel ViewModel { get; }
-    internal event EventHandler<double>? NavigationPaneWidthChanged;
+    private Thickness _navigationItemInset;
+    private bool _presentationReady;
+    private bool _navigationRequested;
+    private bool? _paneTransitionOpen;
+    internal event EventHandler? NavigationLayoutChanged;
+    internal bool IsNavigationPaneOpen => ShellNavigation.IsPaneOpen;
+    internal double NavigationRailLeft => ShellNavigation.TransformToVisual(XamlRoot.Content).TransformPoint(new Windows.Foundation.Point()).X;
+    internal double NavigationRailWidth => ShellNavigation.CompactPaneLength;
+    internal double NavigationCollapsedContentLeft
+    {
+        get
+        {
+            // Include the native content surface's live border, not a pixel offset.
+            for (DependencyObject? parent = VisualTreeHelper.GetParent(NavigationContent); parent is not null; parent = VisualTreeHelper.GetParent(parent))
+            {
+                if (parent is Grid { Name: "ContentGrid" } surface)
+                {
+                    double contentInset = NavigationContent.TransformToVisual(surface).TransformPoint(new Windows.Foundation.Point()).X;
+                    return NavigationRailLeft + NavigationRailWidth + contentInset;
+                }
+            }
+            return NavigationRailLeft + NavigationRailWidth;
+        }
+    }
+    internal Thickness NavigationItemInset => _navigationItemInset;
+    internal double NavigationHeaderRightEdge
+    {
+        get
+        {
+            var root = XamlRoot.Content;
+            if (IsNavigationPaneOpen && ActualWidth >= 700 && FindNavigationSurface(NativeHome) is { ActualWidth: > 0 } surface)
+            { return surface.TransformToVisual(root).TransformPoint(new Windows.Foundation.Point(surface.ActualWidth, 0)).X; }
+            return NavigationRailLeft + ShellNavigation.OpenPaneLength - _navigationItemInset.Right;
+        }
+    }
+    internal void ToggleNavigationPane() => ShellNavigation.IsPaneOpen = !ShellNavigation.IsPaneOpen;
+
+    private void OnNavigationItemLoaded(object sender, RoutedEventArgs e)
+    {
+        // Read the native highlight's inset; the pane width remains the actual
+        // OpenPaneLength even when the pane is currently compact or overlayed.
+        if (FindNavigationSurface(NativeHome) is { } surface) { _navigationItemInset = surface.Margin; }
+        UpdateRoomNavigation();
+    }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -58,8 +102,9 @@ public sealed partial class DevicesPage : Page
         }
 
         RebuildNavigation();
-        UpdateNavigationToolTip();
         await ViewModel.RefreshCommand.ExecuteAsync(null);
+        // Initial content is presented without an entrance, including cached data.
+        _presentationReady = true;
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -114,7 +159,15 @@ public sealed partial class DevicesPage : Page
         if (!ReferenceEquals(ScreenFrame.Content, page))
         {
             ScreenFrame.Content = page;
+            if (_presentationReady && _navigationRequested && page.Content is PageLayout layout) { layout.PlayEntrance(); }
         }
+    }
+
+    private void NavigateWithEntrance(Action navigate)
+    {
+        _navigationRequested = true;
+        try { navigate(); }
+        finally { _navigationRequested = false; }
     }
 
     private void OnRoomsChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -145,43 +198,45 @@ public sealed partial class DevicesPage : Page
 
     private void OnNavigationInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
     {
-        switch (args.InvokedItemContainer?.Tag)
+        NavigateWithEntrance(() =>
         {
-            case RoomGroup room: ViewModel.ShowRoom(room); break;
-            case "Home": ViewModel.NavigateHomeCommand.Execute(null); break;
-            case "Scenes": ViewModel.NavigateScenesCommand.Execute(null); break;
-            case "Activity": ViewModel.NavigateActivityCommand.Execute(null); break;
-            case "Settings": ViewModel.NavigateSettingsCommand.Execute(null); break;
-        }
+            switch (args.InvokedItemContainer?.Tag)
+            {
+                case RoomGroup room: ViewModel.ShowRoom(room); break;
+                case "Home": ViewModel.NavigateHomeCommand.Execute(null); break;
+                case "Scenes": ViewModel.NavigateScenesCommand.Execute(null); break;
+                case "Activity": ViewModel.NavigateActivityCommand.Execute(null); break;
+                case "Settings": ViewModel.NavigateSettingsCommand.Execute(null); break;
+            }
+        });
         if (ActualWidth < 700 && args.InvokedItemContainer is NavigationViewItem { SelectsOnInvoked: true }) { sender.IsPaneOpen = false; }
     }
 
     private void OnNavigationPaneChanged(NavigationView sender, object args)
     {
+        _paneTransitionOpen = null;
         UpdateRoomNavigation();
-        UpdateNavigationToolTip();
     }
 
-    private void UpdateNavigationToolTip()
+    private void OnNavigationPaneOpening(NavigationView sender, object args)
     {
-        // generic.xaml's TogglePaneButton has no tooltip string resource. Keep its
-        // native template and localize the existing button after native pane updates.
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            if (FindToggleButton(ShellNavigation) is not { } button) { return; }
-            string label = ShellNavigation.IsPaneOpen ? "收起导航" : "展开导航";
-            ToolTipService.SetToolTip(button, label);
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, label);
-        });
+        _paneTransitionOpen = true;
+        UpdateRoomNavigation();
     }
 
-    private static Button? FindToggleButton(DependencyObject parent)
+    private void OnNavigationPaneClosing(NavigationView sender, NavigationViewPaneClosingEventArgs args)
+    {
+        _paneTransitionOpen = false;
+        UpdateRoomNavigation();
+    }
+
+    private static FrameworkElement? FindNavigationSurface(DependencyObject parent)
     {
         for (int index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
         {
             DependencyObject child = VisualTreeHelper.GetChild(parent, index);
-            if (child is Button { Name: "TogglePaneButton" } button) { return button; }
-            if (FindToggleButton(child) is { } found) { return found; }
+            if (child is FrameworkElement { Name: "LayoutRoot", Margin.Right: > 0 } surface) { return surface; }
+            if (FindNavigationSurface(child) is { } found) { return found; }
         }
         return null;
     }
@@ -220,7 +275,7 @@ public sealed partial class DevicesPage : Page
             RoomGroup room = selected.Room;
             foreach (RoomChipItem chip in _roomChipItems) { chip.IsActive = ReferenceEquals(chip.Room, room); }
             QueueActiveRoomIntoView();
-            ViewModel.ShowRoom(room);
+            NavigateWithEntrance(() => ViewModel.ShowRoom(room));
         }
     }
 
@@ -233,8 +288,6 @@ public sealed partial class DevicesPage : Page
     private void OnRoomScrollLoaded(object sender, RoutedEventArgs e) => QueueActiveRoomIntoView();
     private void OnRoomStripSizeChanged(object sender, SizeChangedEventArgs e)
     {
-        AlignRoomStripWithPaneToggle();
-        UpdateNavigationToolTip();
         QueueActiveRoomIntoView();
     }
     private void OnRoomScrollSizeChanged(object sender, SizeChangedEventArgs e) => QueueActiveRoomIntoView();
@@ -280,33 +333,17 @@ public sealed partial class DevicesPage : Page
             return;
         }
 
-        bool expanded = ShellNavigation.IsPaneOpen && ActualWidth >= 700;
-        NavigationPaneWidthChanged?.Invoke(this, ShellNavigation.IsPaneOpen ? ShellNavigation.OpenPaneLength : ShellNavigation.CompactPaneLength);
-        NativeRooms.Visibility = expanded || ShellNavigation.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
+        bool paneOpen = _paneTransitionOpen ?? ShellNavigation.IsPaneOpen;
+        NavigationLayoutChanged?.Invoke(this, EventArgs.Empty);
+        NativeRooms.Visibility = paneOpen ? Visibility.Visible : Visibility.Collapsed;
         RoomSeparator.Visibility = NativeRooms.Visibility;
 
         bool roomContext = ViewModel.CurrentPage is ShellPageKind.Home or ShellPageKind.Room;
-        RoomStrip.Margin = new Thickness(ActualWidth < 700 ? 56 : 16, RoomStrip.Margin.Top, 16, 0);
-        NavigationRow.Height = new GridLength(expanded ? 0 : RoomStrip.Height + RoomStrip.Margin.Top);
-        RoomStrip.Visibility = roomContext && !expanded ? Visibility.Visible : Visibility.Collapsed;
-        DispatcherQueue.TryEnqueue(AlignRoomStripWithPaneToggle);
+        RoomStrip.Margin = new Thickness(16, 0, 16, 0);
+        bool showStrip = roomContext && !paneOpen;
+        NavigationRow.Height = new GridLength(showStrip ? RoomStrip.Height : 0);
+        RoomStrip.Visibility = showStrip ? Visibility.Visible : Visibility.Collapsed;
         if (RoomStrip.Visibility == Visibility.Visible) { QueueActiveRoomIntoView(); }
-    }
-
-    private void AlignRoomStripWithPaneToggle()
-    {
-        if (!IsLoaded || RoomStrip.Parent is not UIElement parent || FindToggleButton(ShellNavigation) is not { IsLoaded: true } toggle || toggle.ActualHeight <= 0) { return; }
-        // The native button includes template padding outside its visible surface.
-        // Align with that surface (and its glyph), not the larger control bounds.
-        FrameworkElement surface = VisualTreeHelper.GetChildrenCount(toggle) > 0 && VisualTreeHelper.GetChild(toggle, 0) is FrameworkElement root ? root : toggle;
-        double height = (double)Resources["PaneToggleButtonHeight"];
-        double center = surface.TransformToVisual(parent).TransformPoint(new Windows.Foundation.Point(0, surface.ActualHeight / 2)).Y;
-        double top = Math.Max(0, center - height / 2);
-        RoomStrip.Height = height;
-        var margin = RoomStrip.Margin;
-        if (Math.Abs(margin.Top - top) > 0.01) { RoomStrip.Margin = new Thickness(margin.Left, top, margin.Right, 0); }
-        bool expanded = ShellNavigation.IsPaneOpen && ActualWidth >= 700;
-        NavigationRow.Height = new GridLength(expanded ? 0 : RoomStrip.Height + top);
     }
 
     private void OnDeviceOpened(object? sender, DeviceRowViewModel device)

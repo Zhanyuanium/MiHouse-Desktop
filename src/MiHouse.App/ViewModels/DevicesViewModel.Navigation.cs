@@ -20,6 +20,7 @@ public sealed partial class DevicesViewModel
     [NotifyCanExecuteChangedFor(nameof(RefreshCurrentPageCommand))]
     [NotifyPropertyChangedFor(nameof(PageTitle), nameof(IsRoomEmpty), nameof(IsRoomLoading), nameof(IsRoomFailed), nameof(HasRefreshFailure), nameof(ShowRefreshAction))]
     public partial ShellPageKind CurrentPage { get; set; }
+    partial void OnCurrentPageChanged(ShellPageKind value) => RestartListPolling();
     public bool ShowRefreshAction => CurrentPage != ShellPageKind.Settings;
     private bool CanRefreshCurrentPage() => !IsRefreshBusy && ShowRefreshAction;
 
@@ -36,6 +37,11 @@ public sealed partial class DevicesViewModel
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PageTitle), nameof(IsRoomEmpty))]
     public partial RoomGroup? ActiveRoom { get; set; }
+    partial void OnActiveRoomChanged(RoomGroup? value)
+    {
+        // The room page follows a different row set; a new room restarts the passive poll.
+        if (CurrentPage == ShellPageKind.Room) { RestartListPolling(); }
+    }
 
     public ObservableCollection<DeviceRowViewModel> VisibleDevices { get; } = [];
     public ObservableCollection<DeviceClassGroupViewModel> DeviceClasses { get; } = [];

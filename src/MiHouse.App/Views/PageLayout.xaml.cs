@@ -2,6 +2,8 @@ using System.Collections;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media.Animation;
+using Windows.UI.ViewManagement;
 
 namespace MiHouse.App.Views;
 
@@ -17,10 +19,44 @@ public sealed partial class PageLayout : UserControl
     public static readonly DependencyProperty ItemsSourceProperty = DependencyProperty.Register(nameof(ItemsSource), typeof(IEnumerable), typeof(PageLayout), new PropertyMetadata(null, OnLayoutChanged));
     public static readonly DependencyProperty ItemTemplateProperty = DependencyProperty.Register(nameof(ItemTemplate), typeof(DataTemplate), typeof(PageLayout), new PropertyMetadata(null, OnLayoutChanged));
     private bool _usesItems;
+    private readonly UISettings _uiSettings = new();
+    private Storyboard? _entrance;
+    private bool _entrancePending;
     public PageLayout()
     {
         InitializeComponent();
         DataContextChanged += (_, _) => PageHeader.DataContext = DataContext;
+        Loaded += (_, _) => { if (_entrancePending) { PlayEntrance(); } };
+        Unloaded += (_, _) => ResetEntrance();
+    }
+
+    // Called only by the navigation host when a different page is presented.
+    // Data bindings, refreshes and detail sheets never request an entrance.
+    public void PlayEntrance()
+    {
+        ResetEntrance();
+        if (!_uiSettings.AnimationsEnabled) { return; }
+        if (!IsLoaded) { _entrancePending = true; return; }
+        var duration = new Duration(TimeSpan.FromMilliseconds(200));
+        var rise = new DoubleAnimation { From = 12, To = 0, Duration = duration, EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
+        var fade = new DoubleAnimation { From = 0, To = 1, Duration = duration, EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
+        Storyboard.SetTarget(rise, EntranceOffset);
+        Storyboard.SetTargetProperty(rise, "Y");
+        Storyboard.SetTarget(fade, EntranceHost);
+        Storyboard.SetTargetProperty(fade, "Opacity");
+        _entrance = new Storyboard();
+        _entrance.Children.Add(rise);
+        _entrance.Children.Add(fade);
+        _entrance.Begin();
+    }
+
+    private void ResetEntrance()
+    {
+        _entrancePending = false;
+        _entrance?.Stop();
+        _entrance = null;
+        EntranceOffset.Y = 0;
+        EntranceHost.Opacity = 1;
     }
     public string Heading { get => (string)GetValue(HeadingProperty); set => SetValue(HeadingProperty, value); }
     public string Subtitle { get => (string)GetValue(SubtitleProperty); set => SetValue(SubtitleProperty, value); }

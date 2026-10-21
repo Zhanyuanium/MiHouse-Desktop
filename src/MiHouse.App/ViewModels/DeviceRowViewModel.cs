@@ -95,7 +95,6 @@ public sealed partial class DeviceRowViewModel : ObservableObject
     public bool CanToggle => IsOnline && !IsRemoved && !IsLoading && !IsChanging && !_token.IsCancellationRequested &&
         Power is { HasValue: true, IsBusy: false, HasPendingChanges: false };
     public string StateText => IsRemoved ? "设备已从当前家庭移除" :
-        Power is { IsWriteUnconfirmed: true } ? "已写入，当前值未确认" :
         IsLoading ? "正在读取能力" : Power is null ? string.Empty : Power.HasValue ? Power.TextValue : "当前值不可用";
 
     internal Task EnsureInitializedAsync() => _initialization ??= InitializeAsync();
@@ -169,7 +168,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject
         OnPropertyChanged(nameof(CanToggle));
     }
 
-    internal async Task RefreshReadingsAsync(CancellationToken token)
+    internal async Task RefreshReadingsAsync(CancellationToken token, bool showLoading = true)
     {
         if (_initialization is null || !_initialization.IsCompleted || Spec is null)
         {
@@ -188,7 +187,11 @@ public sealed partial class DeviceRowViewModel : ObservableObject
         }
 
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(token, _token);
-        IsLoading = true;
+        if (showLoading)
+        {
+            IsLoading = true;
+        }
+
         Error = null;
         try
         {
@@ -206,7 +209,11 @@ public sealed partial class DeviceRowViewModel : ObservableObject
         }
         finally
         {
-            IsLoading = false;
+            if (showLoading)
+            {
+                IsLoading = false;
+            }
+
             SyncPower();
         }
     }

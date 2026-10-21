@@ -635,6 +635,7 @@ public sealed partial class DevicesViewModel : ObservableObject
     {
         _isPollingActive = false;
         ResetPollingState();
+        StopListPolling();
         ResetDeviceOperations();
         ScenePanel.Stop();
         _listLifetime?.Cancel();

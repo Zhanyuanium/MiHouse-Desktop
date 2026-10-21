@@ -46,17 +46,43 @@ public sealed class DeviceClassTests
     [InlineData("heater", "取暖器")]
     [InlineData("fan", "风扇")]
     [InlineData("vacuum", "扫地机")]
+    [InlineData("health-pot", "养生壶")]
+    [InlineData("hood", "油烟机")]
+    [InlineData("water-heater", "热水器")]
+    [InlineData("induction-cooker", "电磁炉")]
+    [InlineData("occupancy-sensor", "人体传感器")]
+    [InlineData("speaker", "音箱")]
+    [InlineData("air-fryer", "空气炸锅")]
+    [InlineData("temperature-humidity-sensor", "温湿度传感器")]
+    [InlineData("toothbrush", "牙刷")]
+    [InlineData("rice-cooker", "电饭煲")]
+    [InlineData("microwave", "微波炉")]
+    [InlineData("kettle", "电水壶")]
+    [InlineData("dehumidifier", "除湿机")]
+    [InlineData("plug", "插座")]
+    [InlineData("power-strip", "插排")]
+    [InlineData("door-lock", "门锁")]
+    [InlineData("door-sensor", "门窗传感器")]
+    [InlineData("motion-sensor", "人体传感器")]
+    [InlineData("button", "无线开关")]
+    [InlineData("washer", "洗衣机")]
+    [InlineData("refrigerator", "冰箱")]
+    [InlineData("router", "路由器")]
+    [InlineData("tv", "电视")]
+    [InlineData("robot-vacuum", "扫地机")]
     [InlineData("LIGHT", "灯")]
+    [InlineData("  Hood  ", "油烟机")]
     public void DisplayName_ReturnsLabelForKnownCategory(string category, string expected)
     {
         Assert.Equal(expected, DeviceClass.DisplayName(category));
     }
 
     [Fact]
-    public void DisplayName_FallsBackToCategoryOrOther()
+    public void DisplayName_FallsBackToOtherNeverRawEnglish()
     {
-        Assert.Equal("toaster", DeviceClass.DisplayName("toaster"));
-        Assert.Equal("toaster", DeviceClass.DisplayName("  toaster  "));
+        Assert.Equal("其他", DeviceClass.DisplayName("toaster"));
+        Assert.Equal("其他", DeviceClass.DisplayName("  toaster  "));
+        Assert.Equal("其他", DeviceClass.DisplayName("not-a-real-category"));
         Assert.Equal("其他", DeviceClass.DisplayName(null));
         Assert.Equal("其他", DeviceClass.DisplayName("   "));
     }
@@ -68,13 +94,42 @@ public sealed class DeviceClassTests
         [
             "light",
             "switch",
+            "button",
+            "plug",
+            "power-strip",
             "air-conditioner",
             "curtain",
+            "door-lock",
+            "door-sensor",
+            "motion-sensor",
+            "occupancy-sensor",
             "heater",
             "fan",
+            "water-heater",
+            "dehumidifier",
             "air-purifier",
             "humidifier",
+            "temperature-humidity-sensor",
             "sensor",
+            "vacuum",
+            "robot-vacuum",
+            "washer",
+            "refrigerator",
+            "water-purifier",
+            "cooker",
+            "rice-cooker",
+            "microwave",
+            "induction-cooker",
+            "air-fryer",
+            "kettle",
+            "health-pot",
+            "hood",
+            "speaker",
+            "tv",
+            "router",
+            "gateway",
+            "camera",
+            "toothbrush",
         ];
 
         var previous = int.MinValue;
@@ -91,7 +146,7 @@ public sealed class DeviceClassTests
     public void SortOrder_PutsUnlistedCategoriesLast()
     {
         Assert.Equal(DeviceClass.SortOrder("toaster"), DeviceClass.SortOrder(null));
-        Assert.True(DeviceClass.SortOrder("toaster") > DeviceClass.SortOrder("sensor"));
-        Assert.Equal(DeviceClass.SortOrder("gateway"), DeviceClass.SortOrder("unknown"));
+        Assert.True(DeviceClass.SortOrder("toaster") > DeviceClass.SortOrder("toothbrush"));
+        Assert.Equal(DeviceClass.SortOrder("toaster"), DeviceClass.SortOrder("unknown"));
     }
 }

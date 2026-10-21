@@ -48,6 +48,8 @@ public sealed partial class MainWindow : Window
             WindowTitleBar.XamlRoot.Changed += (_, _) => UpdateTitleBarInset();
         };
         WindowTitleBar.SizeChanged += (_, _) => UpdateTitleBarInset();
+        HomeSwitcher.Loaded += (_, _) => UpdateTitleBarNavigation();
+        HomeSwitcher.SizeChanged += (_, _) => UpdateTitleBarNavigation();
         AppWindow.Changed += (_, _) => DispatcherQueue.TryEnqueue(UpdateTitleBarInset);
         AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
         AppWindow.TitleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
@@ -82,6 +84,7 @@ public sealed partial class MainWindow : Window
         {
             padding.Width = new GridLength(AppWindow.TitleBar.RightInset / root.RasterizationScale);
         }
+        UpdateTitleBarNavigation();
     }
 
     private void ShowLogin()
@@ -90,6 +93,7 @@ public sealed partial class MainWindow : Window
         _secrets.Clear();
         WindowTitleBar.DataContext = null;
         HomeSwitcher.Visibility = Visibility.Collapsed;
+        WindowTitleBar.IsPaneToggleButtonVisible = false;
         var viewModel = new LoginViewModel(_auth, _credentials);
         viewModel.SignedIn += ShowDevices;
         RootFrame.Content = new LoginPage(viewModel);
@@ -102,9 +106,10 @@ public sealed partial class MainWindow : Window
         var viewModel = new DevicesViewModel(_cloud, controller, _credentials, session, _snapshots);
         WindowTitleBar.DataContext = viewModel;
         HomeSwitcher.Visibility = Visibility.Visible;
+        WindowTitleBar.IsPaneToggleButtonVisible = true;
         viewModel.SignedOut += ShowLogin;
         var page = new DevicesPage(viewModel);
-        page.NavigationPaneWidthChanged += OnNavigationPaneWidthChanged;
+        page.NavigationLayoutChanged += OnNavigationLayoutChanged;
         RootFrame.Content = page;
     }
 
@@ -117,15 +122,51 @@ public sealed partial class MainWindow : Window
         }
         else if (RootFrame.Content is DevicesPage devices)
         {
-            devices.NavigationPaneWidthChanged -= OnNavigationPaneWidthChanged;
+            devices.NavigationLayoutChanged -= OnNavigationLayoutChanged;
             devices.ViewModel.SignedOut -= ShowLogin;
             devices.ViewModel.Stop();
         }
     }
 
-    // Equal 8 px insets only make sense against the expanded pane; the 56 px compact
-    // rail would otherwise squash the switcher to 40 px, so keep the default width.
-    private void OnNavigationPaneWidthChanged(object? sender, double width) => HomeSwitcher.Width = Math.Max(192, width - 16);
+    private void OnTitleBarPaneToggleRequested(TitleBar sender, object args)
+    {
+        if (RootFrame.Content is DevicesPage page) { page.ToggleNavigationPane(); }
+    }
+
+    private void OnNavigationLayoutChanged(object? sender, EventArgs args) => DispatcherQueue.TryEnqueue(UpdateTitleBarNavigation);
+
+    private bool _updatingNavigation;
+    private void UpdateTitleBarNavigation()
+    {
+        if (_updatingNavigation || RootFrame.Content is not DevicesPage page || !HomeSwitcher.IsLoaded || HomeSwitcher.XamlRoot is null) { return; }
+        if (VisualTreeHelper.GetChildrenCount(WindowTitleBar) > 0 && VisualTreeHelper.GetChild(WindowTitleBar, 0) is FrameworkElement root &&
+            root.FindName("PART_PaneToggleButton") is Button toggle)
+        {
+            _updatingNavigation = true;
+            try
+            {
+                UIElement visualRoot = HomeSwitcher.XamlRoot.Content;
+                Thickness inset = page.NavigationItemInset;
+                double toggleLeft = toggle.TransformToVisual(visualRoot).TransformPoint(new Windows.Foundation.Point()).X;
+                toggle.Width = Math.Max(0, page.NavigationRailWidth - inset.Left - inset.Right);
+                toggle.Height = RefreshButton.Height;
+                toggle.VerticalAlignment = VerticalAlignment.Center;
+                toggle.Margin = new Thickness(toggle.Margin.Left + page.NavigationRailLeft + inset.Left - toggleLeft, 0, inset.Right, 0);
+                root.UpdateLayout();
+
+                // Keep both header edges anchored to live NavigationView geometry,
+                // independent of the title bar's own template padding or DPI.
+                double contentLeft = page.NavigationCollapsedContentLeft;
+                double homeLeft = HomeSwitcher.TransformToVisual(visualRoot).TransformPoint(new Windows.Foundation.Point()).X;
+                HomeSwitcher.Margin = new Thickness(HomeSwitcher.Margin.Left + contentLeft - homeLeft, 0, 0, 0);
+                HomeSwitcher.Width = Math.Max(0, page.NavigationHeaderRightEdge - contentLeft);
+            }
+            finally { _updatingNavigation = false; }
+            string label = page.IsNavigationPaneOpen ? "收起导航" : "展开导航";
+            ToolTipService.SetToolTip(toggle, label);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(toggle, label);
+        }
+    }
 
     private void OnClosed(object sender, WindowEventArgs args) => StopCurrentPage();
 

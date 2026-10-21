@@ -5,7 +5,7 @@ namespace MiHouse.Core.Devices;
 /// </summary>
 public static class DeviceClass
 {
-    private const int _otherSortOrder = 1000;
+    private const int _otherSortOrder = 2000;
 
     /// <summary>
     /// Extracts the device category from a miot-spec URN, for example
@@ -54,7 +54,7 @@ public static class DeviceClass
     /// Returns the Chinese label shown for a device category.
     /// </summary>
     /// <returns>
-    /// The known label; otherwise the trimmed category as supplied, or <c>其他</c> when blank.
+    /// The known label; otherwise <c>其他</c>.
     /// </returns>
     public static string DisplayName(string? category)
     {
@@ -80,13 +80,37 @@ public static class DeviceClass
             "heater" => "取暖器",
             "fan" => "风扇",
             "vacuum" => "扫地机",
-            _ => trimmed,
+            "health-pot" => "养生壶",
+            "hood" => "油烟机",
+            "water-heater" => "热水器",
+            "induction-cooker" => "电磁炉",
+            "occupancy-sensor" => "人体传感器",
+            "speaker" => "音箱",
+            "air-fryer" => "空气炸锅",
+            "temperature-humidity-sensor" => "温湿度传感器",
+            "toothbrush" => "牙刷",
+            "rice-cooker" => "电饭煲",
+            "microwave" => "微波炉",
+            "kettle" => "电水壶",
+            "dehumidifier" => "除湿机",
+            "plug" => "插座",
+            "power-strip" => "插排",
+            "door-lock" => "门锁",
+            "door-sensor" => "门窗传感器",
+            "motion-sensor" => "人体传感器",
+            "button" => "无线开关",
+            "washer" => "洗衣机",
+            "refrigerator" => "冰箱",
+            "router" => "路由器",
+            "tv" => "电视",
+            "robot-vacuum" => "扫地机",
+            _ => "其他",
         };
     }
 
     /// <summary>
-    /// Ordering key for quick-switch groups: light, switch, air-conditioner, curtain,
-    /// heater/fan, air-purifier/humidifier, sensor, then everything else.
+    /// Ordering key for quick-switch groups: lighting, switches and plugs, climate,
+    /// coverage and sensors, air and cleaning, kitchen, then media and the rest.
     /// </summary>
     public static int SortOrder(string? category)
     {
@@ -100,13 +124,42 @@ public static class DeviceClass
         {
             "light" => 100,
             "switch" => 200,
+            "button" => 210,
+            "plug" => 220,
+            "power-strip" => 230,
             "air-conditioner" => 300,
             "curtain" => 400,
+            "door-lock" => 410,
+            "door-sensor" => 420,
+            "motion-sensor" => 430,
+            "occupancy-sensor" => 440,
             "heater" => 500,
             "fan" => 510,
+            "water-heater" => 520,
+            "dehumidifier" => 530,
             "air-purifier" => 600,
             "humidifier" => 610,
+            "temperature-humidity-sensor" => 620,
             "sensor" => 700,
+            "vacuum" => 800,
+            "robot-vacuum" => 810,
+            "washer" => 820,
+            "refrigerator" => 830,
+            "water-purifier" => 840,
+            "cooker" => 900,
+            "rice-cooker" => 910,
+            "microwave" => 920,
+            "induction-cooker" => 930,
+            "air-fryer" => 940,
+            "kettle" => 950,
+            "health-pot" => 960,
+            "hood" => 970,
+            "speaker" => 1000,
+            "tv" => 1010,
+            "router" => 1020,
+            "gateway" => 1030,
+            "camera" => 1040,
+            "toothbrush" => 1050,
             _ => _otherSortOrder,
         };
     }
@@ -135,4 +188,3 @@ public static class DeviceClass
         return true;
     }
 }
-

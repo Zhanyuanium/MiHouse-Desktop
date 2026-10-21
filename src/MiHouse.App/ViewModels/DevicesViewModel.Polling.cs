@@ -5,7 +5,11 @@ namespace MiHouse.App.ViewModels;
 
 public sealed partial class DevicesViewModel
 {
+    private static readonly TimeSpan _listPollInterval = TimeSpan.FromSeconds(8);
+    private const int _listPollConcurrency = 3;
     private CancellationTokenSource? _pollLifetime;
+    private CancellationTokenSource? _listPollLifetime;
+    private Task _listPollTask = Task.CompletedTask;
     private MiPropertyKey[] _readableKeys = [];
     private bool _hasLoadedValues;
     private bool _isPollingActive;
@@ -16,10 +20,12 @@ public sealed partial class DevicesViewModel
         if (active)
         {
             StartPolling();
+            RestartListPolling();
         }
         else
         {
             StopPolling();
+            StopListPolling();
         }
     }
 
@@ -48,6 +54,117 @@ public sealed partial class DevicesViewModel
         _pollLifetime?.Cancel();
         _pollLifetime?.Dispose();
         _pollLifetime = null;
+    }
+
+    /// <summary>
+    /// Starts the passive list poll: the tiles on the home and room pages follow the
+    /// devices' physical state without the detail sheet being opened. A page, room or
+    /// activation change cancels the running loop and starts a new one.
+    /// </summary>
+    internal void RestartListPolling()
+    {
+        Task previous = _listPollTask;
+        StopListPolling();
+        if (!_isPollingActive || CurrentPage is not (ShellPageKind.Home or ShellPageKind.Room))
+        {
+            return;
+        }
+
+        var lifetime = new CancellationTokenSource();
+        _listPollLifetime = lifetime;
+        _listPollTask = RunListPollAsync(previous, lifetime.Token);
+    }
+
+    private async Task RunListPollAsync(Task previous, CancellationToken token)
+    {
+        try
+        {
+            // Never overlap cycles across a restart: the old cycle finishes first.
+            await previous.ConfigureAwait(true);
+        }
+        catch (Exception)
+        {
+            // The previous loop reports nothing; its token ending is the only stop signal.
+        }
+
+        await PollListAsync(token).ConfigureAwait(true);
+    }
+
+    private void StopListPolling()
+    {
+        _listPollLifetime?.Cancel();
+        _listPollLifetime?.Dispose();
+        _listPollLifetime = null;
+    }
+
+    private DeviceRowViewModel[] ListPollTargets()
+    {
+        IEnumerable<DeviceRowViewModel> rows = CurrentPage switch
+        {
+            ShellPageKind.Home => _deviceRows.Values,
+            ShellPageKind.Room => VisibleDevices,
+            _ => [],
+        };
+
+        // The detail sheet's open device has its own faster poll; writes own their rows.
+        return rows.Where(row => !row.IsRemoved && row.IsOnline && !row.IsLoading && !row.HasOperations &&
+            row.Power is not { IsBusy: true } && row.Power is not { HasPendingChanges: true } &&
+            !ReferenceEquals(row, SelectedDevice)).ToArray();
+    }
+
+    private async Task PollListAsync(CancellationToken token)
+    {
+        try
+        {
+            while (true)
+            {
+                await Task.Delay(_listPollInterval, token).ConfigureAwait(true);
+                DeviceRowViewModel[] rows = ListPollTargets();
+                if (rows.Length == 0)
+                {
+                    continue;
+                }
+
+                using var concurrency = new SemaphoreSlim(_listPollConcurrency);
+                await Task.WhenAll(rows.Select(async row =>
+                {
+                    try
+                    {
+                        await concurrency.WaitAsync(token).ConfigureAwait(true);
+                        try
+                        {
+                            // Recheck after waiting; the page or the row may have changed.
+                            if (row.IsRemoved || !row.IsOnline || row.IsLoading || row.HasOperations ||
+                                row.Power is { IsBusy: true } or { HasPendingChanges: true } ||
+                                ReferenceEquals(row, SelectedDevice))
+                            {
+                                return;
+                            }
+
+                            // A passive read must not flash loading placeholders on the tiles.
+                            await row.RefreshReadingsAsync(token, showLoading: false).ConfigureAwait(true);
+                            token.ThrowIfCancellationRequested();
+                            PublishSensorReadings(row);
+                        }
+                        finally
+                        {
+                            concurrency.Release();
+                        }
+                    }
+                    catch (OperationCanceledException) when (token.IsCancellationRequested)
+                    {
+                    }
+                    catch (Exception)
+                    {
+                        // A failing device must not stop the others; the row shows its own error.
+                    }
+                })).ConfigureAwait(true);
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            // Page, room, activation or session change: this loop is done.
+        }
     }
 
     private async Task ReadCurrentValuesAsync(MiDevice device, MiPropertyKey[] keys, CancellationToken token)

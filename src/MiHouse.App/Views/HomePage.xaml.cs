@@ -11,6 +11,8 @@ public sealed partial class HomePage : Page
         InitializeComponent();
     }
     public event EventHandler<DeviceClassGroupViewModel>? GroupOpened;
+    public event EventHandler? ScenesOpened;
+    private void OnScenesOpened(object sender, RoutedEventArgs e) => ScenesOpened?.Invoke(this, EventArgs.Empty);
     private void OnGroupCardClick(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is DeviceClassCardViewModel card) { GroupOpened?.Invoke(this, card.Group); }
