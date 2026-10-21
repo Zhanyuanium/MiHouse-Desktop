@@ -64,10 +64,12 @@
          <ItemsControl.ItemContainerTransitions><TransitionCollection /></ItemsControl.ItemContainerTransitions>
          <ItemsControl.ItemTemplate><DataTemplate><Button DataContext="{Binding Card}" Style="{StaticResource SectionTileButtonStyle}" Click="OnGroupCardClick" AutomationProperties.Name="{Binding Name}">
           <Grid><views:FeedbackHalo Level="{Binding HaloLevel}" />
-           <Grid ColumnSpacing="8" RowSpacing="8" VerticalAlignment="Center" Padding="{StaticResource DashboardCardPadding}"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="48" /></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+           <Grid ColumnSpacing="8" RowSpacing="8" VerticalAlignment="Center" Padding="{StaticResource DashboardCardPadding}"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="48" /></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
           <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center" />
           <views:GroupPowerSwitch Grid.Column="1" State="{Binding PowerState}" IsEnabled="{Binding CanToggle}" PowerRequested="OnGroupPowerRequested" AutomationProperties.Name="{Binding Name}" Visibility="{Binding HasPower, Converter={StaticResource BooleanVisibilityConverter}}" />
           <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Summary}" FontSize="12" Style="{StaticResource SecondaryTextStyle}" />
+          <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding Notice}" FontSize="12" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
+            Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{Binding Notice, Converter={StaticResource HasTextConverter}}" AutomationProperties.LiveSetting="Polite" />
           </Grid></Grid>
         </Button></DataTemplate></ItemsControl.ItemTemplate>
          </ItemsControl>

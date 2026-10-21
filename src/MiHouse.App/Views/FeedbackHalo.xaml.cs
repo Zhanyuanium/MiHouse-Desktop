@@ -55,12 +55,12 @@ public sealed partial class FeedbackHalo : UserControl
     }
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041)) { _settings.AnimationsEnabledChanged += OnAnimationsChanged; }
+        _settings.AnimationsEnabledChanged += OnAnimationsChanged;
         ApplyLevel(false);
     }
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041)) { _settings.AnimationsEnabledChanged -= OnAnimationsChanged; }
+        _settings.AnimationsEnabledChanged -= OnAnimationsChanged;
         var visual = ElementCompositionPreview.GetElementVisual(Tint);
         visual.StopAnimation("Opacity");
         visual.Opacity = 0;

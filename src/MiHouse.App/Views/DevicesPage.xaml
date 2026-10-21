@@ -67,6 +67,8 @@
       </Grid>
       <StackPanel Grid.Row="1" Spacing="6" Margin="0,0,16,0" Visibility="{Binding HasDetailStatus, Converter={StaticResource BooleanVisibilityConverter}}">
        <InfoBar IsOpen="{Binding DetailError, Converter={StaticResource HasTextConverter}}" Visibility="{Binding DetailError, Converter={StaticResource HasTextConverter}}" Severity="Error" IsClosable="False" Message="{Binding DetailError}" />
+       <TextBlock Text="{Binding DetailStaleMessage}" FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+         Visibility="{Binding DetailStaleMessage, Converter={StaticResource HasTextConverter}}" AutomationProperties.LiveSetting="Polite" />
        <ProgressBar IsIndeterminate="True" Visibility="{Binding IsDetailBusy, Converter={StaticResource BooleanVisibilityConverter}}" AutomationProperties.Name="正在读取设备属性" />
        <TextBlock Text="{Binding DetailMessage}" TextWrapping="Wrap" Visibility="{Binding DetailMessage, Converter={StaticResource HasTextConverter}}" />
       </StackPanel>

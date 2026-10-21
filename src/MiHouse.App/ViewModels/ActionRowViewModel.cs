@@ -18,11 +18,12 @@ public sealed partial class ActionServiceViewModel(string name, IReadOnlyList<Ac
 [Microsoft.UI.Xaml.Data.Bindable]
 public sealed partial class ActionRowViewModel : ObservableObject
 {
+    private readonly DeviceRowViewModel _owner;
     private readonly IDeviceController _controller;
-    private readonly MiDevice _device;
     private readonly CancellationToken _token;
     private readonly SpecAction _action;
     private readonly bool _isDestructive;
+    private readonly int _definitionVersion;
     private readonly Func<ActionRowViewModel, CancellationToken, Task<bool>> _confirm;
 
     [ObservableProperty]
@@ -46,12 +47,13 @@ public sealed partial class ActionRowViewModel : ObservableObject
     public bool HasOutput => !string.IsNullOrWhiteSpace(Output);
     public bool HasError => !string.IsNullOrWhiteSpace(Error);
 
-    public ActionRowViewModel(IDeviceController controller, MiDevice device, int siid, SpecAction action,
+    public ActionRowViewModel(DeviceRowViewModel owner, int siid, SpecAction action,
         CancellationToken token, Func<ActionRowViewModel, CancellationToken, Task<bool>> confirm)
     {
-        _controller = controller;
-        _device = device;
+        _owner = owner;
+        _controller = owner.Controller;
         _token = token;
+        _definitionVersion = owner.DefinitionVersion;
         _confirm = confirm;
         Key = new MiActionKey(siid, action.Iid);
         _action = action;
@@ -76,8 +78,50 @@ public sealed partial class ActionRowViewModel : ObservableObject
     public bool HasInputs => Inputs.Count > 0;
     public string ButtonLabel => HasInputs ? "执行" : Name;
     public string AccessibleName => $"执行：{Name}";
-    public bool CanEdit => !IsRemoved && !IsBusy && !_token.IsCancellationRequested;
-    public bool CanInvoke => CanEdit && Inputs.All(input => input.IsValid);
+    public bool CanEdit => !IsRemoved && _owner.IsInventoryVerified && !IsBusy && !_token.IsCancellationRequested;
+    public bool CanInvoke => CanEdit && !_owner.HasRunningAction && Inputs.All(input => input.IsValid);
+
+    internal void NotifyInventoryStateChanged()
+    {
+        NotifyOwnerActionStateChanged();
+    }
+
+    internal void NotifyOwnerActionStateChanged()
+    {
+        OnPropertyChanged(nameof(CanEdit));
+        OnPropertyChanged(nameof(CanInvoke));
+        InvokeCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// True while this attempt still targets the address it was confirmed against. Rows stay
+    /// valid after an address refresh, but the attempt must be repeated on the current one.
+    /// </summary>
+    private bool EnsureTargetCurrent(int targetVersion)
+    {
+        if (_owner.TargetVersion == targetVersion)
+        {
+            return true;
+        }
+
+        Error = "设备地址已更新，本次操作未执行。请重试。";
+        return false;
+    }
+
+    /// <summary>
+    /// True while this row still belongs to the owner's current definitions. A rebuild means the
+    /// service/action identity changed and this row's key must not be sent to the new device.
+    /// </summary>
+    private bool EnsureDefinitionCurrent()
+    {
+        if (_owner.DefinitionVersion == _definitionVersion)
+        {
+            return true;
+        }
+
+        Error = "设备定义已更新，本次操作未执行。请重新打开设备详情后重试。";
+        return false;
+    }
 
     [RelayCommand(CanExecute = nameof(CanInvoke))]
     private async Task InvokeAsync()
@@ -93,6 +137,18 @@ public sealed partial class ActionRowViewModel : ObservableObject
             return;
         }
 
+        if (!EnsureDefinitionCurrent())
+        {
+            return;
+        }
+
+        if (!_owner.TryBeginAction())
+        {
+            Error = "已有操作正在执行，请等待完成后再试。";
+            return;
+        }
+
+        int targetVersion = _owner.TargetVersion;
         IsBusy = true;
         Error = null;
         Output = null;
@@ -100,13 +156,21 @@ public sealed partial class ActionRowViewModel : ObservableObject
         {
             JsonElement[] input = Inputs.Select(item => item.SerializeValue()).ToArray();
             bool confirmed = await _confirm(this, _token);
+            if (!confirmed)
+            {
+                return;
+            }
+
             if (IsRemoved)
             {
                 Error = "设备已不在当前家庭";
                 return;
             }
 
-            if (!confirmed)
+            // The dialog can wait arbitrarily long. If a refresh replaced the control identity,
+            // the confirmed key and inputs belong to the old definitions; an address-only change
+            // must be retried against the new endpoint.
+            if (!EnsureDefinitionCurrent() || !EnsureTargetCurrent(targetVersion))
             {
                 return;
             }
@@ -118,7 +182,13 @@ public sealed partial class ActionRowViewModel : ObservableObject
                 return;
             }
 
-            JsonElement result = await _controller.InvokeAsync(_device, Key, input, _token);
+            // Last check before the request leaves the client.
+            if (!EnsureDefinitionCurrent() || !EnsureTargetCurrent(targetVersion))
+            {
+                return;
+            }
+
+            JsonElement result = await _controller.InvokeAsync(_owner.Device, Key, input, _token);
             _token.ThrowIfCancellationRequested();
             bool isEmpty = result.ValueKind switch
             {
@@ -143,6 +213,7 @@ public sealed partial class ActionRowViewModel : ObservableObject
         finally
         {
             IsBusy = false;
+            _owner.EndAction();
         }
     }
 

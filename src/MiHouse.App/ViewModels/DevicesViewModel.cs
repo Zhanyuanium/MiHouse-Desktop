@@ -76,6 +76,7 @@ public sealed partial class DevicesViewModel : ObservableObject
     private CancellationTokenSource? _selectionLifetime;
     private bool _isUpdatingHomes;
     private bool _isSigningOut;
+    private bool _homesVerified;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsRoomLoading), nameof(IsRoomFailed), nameof(HasRefreshFailure), nameof(IsRoomEmpty), nameof(IsRefreshBusy))]
@@ -92,6 +93,10 @@ public sealed partial class DevicesViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasDetailStatus))]
     public partial string? DetailError { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasDetailStatus))]
+    public partial string? DetailStaleMessage { get; set; }
 
     [ObservableProperty]
     public partial bool IsEmpty { get; set; }
@@ -151,9 +156,9 @@ public sealed partial class DevicesViewModel : ObservableObject
     public bool HasSelectedHome => SelectedHome is not null;
 
     [RelayCommand]
-    private async Task RefreshAsync() => await LoadDevicesAsync();
+    private async Task RefreshAsync() => await LoadDevicesAsync(refreshHomes: true);
 
-    private async Task LoadDevicesAsync()
+    private async Task LoadDevicesAsync(bool refreshHomes = false)
     {
         if (_isSigningOut)
         {
@@ -171,15 +176,16 @@ public sealed partial class DevicesViewModel : ObservableObject
         string? previousRoom = ActiveRoom?.Name;
         try
         {
-            // The first load primes homes and the selected home's devices; a later home switch
-            // primes that home only when the session has not loaded it yet.
+            // The first load primes homes and the selected home's devices; an explicit refresh
+            // also reconciles homes so new, renamed or moved entries appear. A home switch only
+            // reloads the devices, unless the homes were never verified from the network.
             bool restoredHomes = false;
             if (Homes.Count == 0)
             {
                 restoredHomes = RestoreSnapshot();
             }
 
-            if (SelectedHome is null || restoredHomes)
+            if (SelectedHome is null || restoredHomes || refreshHomes || !_homesVerified)
             {
                 // Initial selection belongs to this load, not a second device request.
                 _isUpdatingHomes = true;
@@ -188,6 +194,7 @@ public sealed partial class DevicesViewModel : ObservableObject
                 {
                     fetchedHomes = await _cloud.GetHomesAsync(_session, token);
                     token.ThrowIfCancellationRequested();
+                    _homesVerified = true;
 
                     if (Homes.Count == 0)
                     {
@@ -226,8 +233,9 @@ public sealed partial class DevicesViewModel : ObservableObject
                 return;
             }
 
-            // A home the session has not loaded yet paints its cached structure before the
-            // request; its rows stay marked as loading so nothing is written from cache data.
+            // A home already in memory paints its live structure; otherwise its cached
+            // structure paints before the request. Cached rows stay loading and unverified so
+            // nothing is written from cache data.
             if (!restoredHomes && _userId is { } cachedUserId)
             {
                 RestoreHomeDevices(cachedUserId, selectedHome);
@@ -236,6 +244,7 @@ public sealed partial class DevicesViewModel : ObservableObject
             IReadOnlyList<MiDevice> devices = await _cloud.GetDevicesAsync(_session, selectedHome.Home, token);
             token.ThrowIfCancellationRequested();
             DeviceRowViewModel[] rows = MergeDevices(devices);
+            _verifiedHomeId = selectedHome.Home.Id;
             SyncRooms(selectedHome, rows);
 
             IsEmpty = rows.Length == 0;
@@ -351,31 +360,29 @@ public sealed partial class DevicesViewModel : ObservableObject
 
     /// <summary>
     /// Publishes the structure of <paramref name="home"/> before its request: from the live
-    /// rows when the session already holds the home's devices, otherwise from the cached
-    /// snapshot. Only the home's own rows feed rooms and class groups, keeping a previous home
-    /// out of the new home's groups; cached rows keep
-    /// <see cref="DeviceRowViewModel.IsLoading"/> set, so cached data is never used for writes.
+    /// rows when the session already holds a verified inventory for that home, otherwise from
+    /// the cached snapshot. A verified live inventory is never reconciled against the disk
+    /// snapshot, so a stale snapshot can neither hide live devices nor resurrect removed ones.
+    /// Cached rows keep <see cref="DeviceRowViewModel.IsLoading"/> set and stay unverified, so
+    /// cached data is never used for writes.
     /// </summary>
     private void RestoreHomeDevices(long userId, HomeRowViewModel home)
     {
-        if (!_snapshots.TryLoadDevices(userId, home.Home, out IReadOnlyList<MiDevice> devices))
-        {
-            return;
-        }
-
-        var ids = new HashSet<string>(devices.Select(device => device.Did), StringComparer.Ordinal);
         DeviceRowViewModel[] rows;
-        if (ids.Count > 0 && ids.All(_deviceRows.ContainsKey))
+        if (_verifiedHomeId == home.Home.Id)
         {
-            // The home is already in memory: rebuild the view from the live rows so the older
-            // snapshot never overwrites fresher device data.
-            rows = _deviceRows.Values.Where(row => ids.Contains(row.Device.Did)).ToArray();
+            // The home is already in memory: rebuild the view from the live rows only.
+            rows = _deviceRows.Values.Where(row => !row.IsRemoved).ToArray();
+        }
+        else if (_snapshots.TryLoadDevices(userId, home.Home, out IReadOnlyList<MiDevice> devices))
+        {
+            rows = MergeDevices(devices, isLoading: true, inventoryVerified: false)
+                .Where(row => !row.IsRemoved)
+                .ToArray();
         }
         else
         {
-            rows = MergeDevices(devices, isLoading: true)
-                .Where(row => ids.Contains(row.Device.Did))
-                .ToArray();
+            return;
         }
 
         SyncRooms(home, rows);
@@ -512,10 +519,23 @@ public sealed partial class DevicesViewModel : ObservableObject
         try
         {
             // Closing the sheet cancels the wait; the shared row keeps its own lifetime.
+            int definitionVersion = row.DefinitionVersion;
             await row.EnsureInitializedAsync().WaitAsync(token);
             token.ThrowIfCancellationRequested();
+            if (definitionVersion != row.DefinitionVersion)
+            {
+                // A refresh replaced the control identity while initialization was in flight.
+                // The reload started by that change owns the rows.
+                return;
+            }
+
             SpecInstance? spec = row.Spec ?? await _controller.GetSpecAsync(row.Device, token);
             token.ThrowIfCancellationRequested();
+            if (definitionVersion != row.DefinitionVersion)
+            {
+                return;
+            }
+
             if (spec is null)
             {
                 DetailMessage = "此型号暂无 miot-spec 属性定义";
@@ -596,44 +616,49 @@ public sealed partial class DevicesViewModel : ObservableObject
     private async Task SignOutAsync()
     {
         _isSigningOut = true;
-        Stop();
-        SelectedDevice = null;
-        Error = null;
+        // The credentials are the irreversible part. Tear nothing down until they are gone, so a
+        // failed deletion leaves a fully working signed-in session.
         try
         {
             await _credentials.ClearAsync(CancellationToken.None);
-            _isUpdatingHomes = true;
-            try
-            {
-                SelectedHome = null;
-                Homes.Clear();
-            }
-            finally
-            {
-                _isUpdatingHomes = false;
-            }
-
-            OnPropertyChanged(nameof(HasHomes));
-            Rooms.Clear();
-            ClearDashboard();
-            Properties.Clear();
-            ActionServices.Clear();
-            IsEmpty = false;
-            HasNoHomes = false;
-            DetailError = null;
-            DetailMessage = null;
-            SignedOut?.Invoke();
         }
         catch (Exception ex)
         {
-            _isSigningOut = false;
             Error = $"退出登录失败：{DeviceErrorText.Describe(ex)}";
+            _isSigningOut = false;
+            return;
         }
+
+        Stop();
+        SelectedDevice = null;
+        Error = null;
+        _isUpdatingHomes = true;
+        try
+        {
+            SelectedHome = null;
+            Homes.Clear();
+        }
+        finally
+        {
+            _isUpdatingHomes = false;
+        }
+
+        OnPropertyChanged(nameof(HasHomes));
+        Rooms.Clear();
+        ClearDashboard();
+        Properties.Clear();
+        ActionServices.Clear();
+        IsEmpty = false;
+        HasNoHomes = false;
+        DetailError = null;
+        DetailMessage = null;
+        SignedOut?.Invoke();
     }
 
     public void Stop()
     {
         _isPollingActive = false;
+        _homesVerified = false;
         ResetPollingState();
         StopListPolling();
         ResetDeviceOperations();

@@ -21,16 +21,27 @@ public sealed partial class DeviceRowViewModel : ObservableObject
     private bool _syncing;
     private bool _stopped;
     private bool _hasLoadedValues;
+    private int _definitionVersion;
+    private int _targetVersion;
+    private int _runningActions;
     private Task? _initialization;
 
-    public DeviceRowViewModel(MiDevice device, IDeviceController controller, CancellationToken homeToken, bool isLoading = false)
+    public DeviceRowViewModel(MiDevice device, IDeviceController controller, CancellationToken homeToken,
+        bool isLoading = false, bool inventoryVerified = false)
     {
         _device = device;
         _controller = controller;
         _operationLifetime = CancellationTokenSource.CreateLinkedTokenSource(homeToken);
         _token = _operationLifetime.Token;
         IsLoading = isLoading;
+        IsInventoryVerified = inventoryVerified;
     }
+
+    /// <summary>
+    /// Raised when a refresh changes the parent channel or spec that control definitions are
+    /// built from. The owning view model must rebuild the detail rows from the new definitions.
+    /// </summary>
+    internal event Action<DeviceRowViewModel>? ControlIdentityChanged;
 
     public MiDevice Device => _device;
     public string Name => string.IsNullOrWhiteSpace(Device.Name) ? Device.Model : Device.Name;
@@ -42,9 +53,10 @@ public sealed partial class DeviceRowViewModel : ObservableObject
     public string RoomStatusText => $"{RoomName} · {OnlineLabel}";
     public string QuickStatusText => string.IsNullOrEmpty(StateText) ? RoomStatusText : $"{RoomStatusText} · {StateText}";
     public string AccessibleName => $"{Name}，{RoomName}，{OnlineLabel}";
-    public string PowerAccessibleName => Power is null && !IsLoading ? $"{Name}，{RoomName}，此设备没有统一的电源属性" : $"{Name}，{RoomName}";
-    public string PowerHelpText => IsRemoved ? "设备已从当前家庭移除" : IsLoading ? "正在读取设备能力" : Power is null
+    public string PowerAccessibleName => Power is null && !IsLoading && IsInventoryVerified ? $"{Name}，{RoomName}，此设备没有统一的电源属性" : $"{Name}，{RoomName}";
+    public string PowerHelpText => IsRemoved ? "设备已从当前家庭移除" : !IsInventoryVerified ? "正在确认设备列表" : IsLoading ? "正在读取设备能力" : Power is null
         ? Error is null ? "此设备没有统一的电源属性" : "设备能力读取失败"
+        : Power.IsWriteUnconfirmed ? "已写入，正在等待设备确认"
         : !Power.HasValue ? "当前值不可用，暂不能切换电源" : "切换电源，立即写入";
     private string? Category => DeviceClass.FromSpecType(Device.SpecType) ?? DeviceClass.FromSpecType(Spec?.Type);
     public string ClassName => DeviceClass.DisplayName(Category);
@@ -62,7 +74,10 @@ public sealed partial class DeviceRowViewModel : ObservableObject
         Power is not { HasValue: true } && SensorReadings.Count == 0;
     internal CancellationToken OperationToken => _token;
     internal IEnumerable<PropertyRowViewModel> PropertyRows => _properties.Values;
-    internal bool HasOperations => IsChanging || _properties.Values.Any(row => row.IsBusy) ||
+    internal int DefinitionVersion => _definitionVersion;
+    internal int TargetVersion => _targetVersion;
+    internal bool HasRunningAction => Volatile.Read(ref _runningActions) > 0;
+    internal bool HasOperations => IsChanging || HasRunningAction || _properties.Values.Any(row => row.IsBusy) ||
         (_actions?.SelectMany(service => service.Actions).Any(row => row.IsBusy) ?? false);
 
     [ObservableProperty]
@@ -79,6 +94,10 @@ public sealed partial class DeviceRowViewModel : ObservableObject
     public partial bool IsLoading { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanToggle), nameof(PowerHelpText))]
+    public partial bool IsInventoryVerified { get; set; }
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanToggle))]
     public partial bool IsChanging { get; set; }
 
@@ -92,17 +111,35 @@ public sealed partial class DeviceRowViewModel : ObservableObject
     public string? TileError => Error ?? Power?.Error;
     public bool HasTileError => !string.IsNullOrEmpty(TileError);
 
-    public bool CanToggle => IsOnline && !IsRemoved && !IsLoading && !IsChanging && !_token.IsCancellationRequested &&
+    public bool CanToggle => IsOnline && IsInventoryVerified && !IsRemoved && !IsLoading && !IsChanging && !_token.IsCancellationRequested &&
         Power is { HasValue: true, IsBusy: false, HasPendingChanges: false };
     public string StateText => IsRemoved ? "设备已从当前家庭移除" :
         IsLoading ? "正在读取能力" : Power is null ? string.Empty : Power.HasValue ? Power.TextValue : "当前值不可用";
 
+    internal IDeviceController Controller => _controller;
     internal Task EnsureInitializedAsync() => _initialization ??= InitializeAsync();
 
     internal void UpdateDevice(MiDevice device)
     {
+        // Definitions only depend on the control target's parent/channel and spec. An IP-only
+        // change keeps every property and action key valid, so it must not rebuild rows; the
+        // send path reads the updated device from the owner instead.
+        bool definitionsChanged = HasDefinitionIdentityChanged(_device, device);
+        if (definitionsChanged ||
+            !string.Equals(_device.LocalIp, device.LocalIp, StringComparison.Ordinal))
+        {
+            // A request confirmed before this refresh was aimed at the old address. Rows stay
+            // valid for a retry, but the in-flight attempt must not send to the new endpoint.
+            _targetVersion++;
+        }
+
         _device = device;
         IsRemoved = false;
+        if (definitionsChanged)
+        {
+            ResetControlDefinitions();
+        }
+
         foreach (string name in new[] { nameof(Device), nameof(Name), nameof(Model), nameof(RoomName), nameof(Monogram),
             nameof(IsOnline), nameof(OnlineLabel), nameof(RoomStatusText), nameof(QuickStatusText), nameof(AccessibleName), nameof(PowerAccessibleName), nameof(ClassName), nameof(CanToggle) })
         {
@@ -110,12 +147,41 @@ public sealed partial class DeviceRowViewModel : ObservableObject
         }
     }
 
+    private static bool HasDefinitionIdentityChanged(MiDevice current, MiDevice updated) =>
+        !string.Equals(current.ParentDid, updated.ParentDid, StringComparison.Ordinal) ||
+        current.ChannelSiid != updated.ChannelSiid ||
+        !string.Equals(current.SpecType, updated.SpecType, StringComparison.Ordinal) ||
+        current.IsSplitMetadataIncomplete != updated.IsSplitMetadataIncomplete;
+
+    /// <summary>
+    /// The control identity's parent channel or spec changed: every cached definition belongs to
+    /// the old identity. Drop it so the next initialization rebuilds properties and actions from
+    /// the new device, and let the detail view replace its rows.
+    /// </summary>
+    private void ResetControlDefinitions()
+    {
+        // Rows capture this generation and refuse to write once it moves. Rebuilding does not
+        // clear _runningActions, so an action already in flight stays represented at owner level.
+        _definitionVersion++;
+        _initialization = null;
+        Spec = null;
+        _sensors = [];
+        _properties.Clear();
+        _actions = null;
+        _hasLoadedValues = false;
+        IsLoading = false;
+        Power = null;
+        Error = null;
+        OnPropertyChanged(nameof(ClassName));
+        ControlIdentityChanged?.Invoke(this);
+    }
+
     internal PropertyRowViewModel GetProperty(SpecService service, SpecProperty property)
     {
         var key = new MiPropertyKey(service.Iid, property.Iid);
         if (!_properties.TryGetValue(key, out PropertyRowViewModel? row))
         {
-            row = new PropertyRowViewModel(_controller, Device, service.DisplayName, service.Iid, property, null, _token);
+            row = new PropertyRowViewModel(this, service.DisplayName, service.Iid, property, null, _token);
             row.IsAdvanced = SpecSections.Classify(service) == SpecSection.Advanced;
             row.IsRemoved = IsRemoved;
             row.PropertyChanged += OnOperationPropertyChanged;
@@ -133,7 +199,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject
             // Unbinding is an account operation that this client does not expose.
             _actions = spec.Services.Select(service => new ActionServiceViewModel(service.DisplayName,
                 service.Actions.Where(action => !action.Type.Contains("unbind", StringComparison.OrdinalIgnoreCase))
-                     .Select(action => new ActionRowViewModel(_controller, Device, service.Iid, action, _token, confirm)
+                     .Select(action => new ActionRowViewModel(this, service.Iid, action, _token, confirm)
                      { ServiceName = service.DisplayName }).ToArray())
             { IsAdvanced = SpecSections.Classify(service) == SpecSection.Advanced })
                 .Where(service => service.Actions.Count > 0).ToArray();
@@ -168,6 +234,48 @@ public sealed partial class DeviceRowViewModel : ObservableObject
         OnPropertyChanged(nameof(CanToggle));
     }
 
+    /// <summary>
+    /// Reserves the device's single action slot. The owner, not an individual row, owns this
+    /// state so rebuilding definitions cannot let a new row repeat a non-idempotent action while
+    /// the old one is still running.
+    /// </summary>
+    internal bool TryBeginAction()
+    {
+        if (Interlocked.Increment(ref _runningActions) != 1)
+        {
+            Interlocked.Decrement(ref _runningActions);
+            return false;
+        }
+
+        OnPropertyChanged(nameof(HasOperations));
+        NotifyActionInvocationState();
+        return true;
+    }
+
+    internal void EndAction()
+    {
+        if (Interlocked.Decrement(ref _runningActions) != 0)
+        {
+            return;
+        }
+
+        OnPropertyChanged(nameof(HasOperations));
+        NotifyActionInvocationState();
+    }
+
+    private void NotifyActionInvocationState()
+    {
+        if (_actions is null)
+        {
+            return;
+        }
+
+        foreach (ActionRowViewModel action in _actions.SelectMany(service => service.Actions))
+        {
+            action.NotifyOwnerActionStateChanged();
+        }
+    }
+
     internal async Task RefreshReadingsAsync(CancellationToken token, bool showLoading = true)
     {
         if (_initialization is null || !_initialization.IsCompleted || Spec is null)
@@ -186,6 +294,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject
             return;
         }
 
+        int version = _definitionVersion;
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(token, _token);
         if (showLoading)
         {
@@ -195,37 +304,47 @@ public sealed partial class DeviceRowViewModel : ObservableObject
         Error = null;
         try
         {
-            await ReadSnapshotAsync(lifetime.Token);
+            await ReadSnapshotAsync(lifetime.Token, version);
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
         {
         }
         catch (Exception ex)
         {
-            if (!lifetime.IsCancellationRequested)
+            if (!lifetime.IsCancellationRequested && version == _definitionVersion)
             {
                 Error = DeviceErrorText.Describe(ex);
             }
         }
         finally
         {
-            if (showLoading)
+            if (version == _definitionVersion)
             {
-                IsLoading = false;
-            }
+                if (showLoading)
+                {
+                    IsLoading = false;
+                }
 
-            SyncPower();
+                SyncPower();
+            }
         }
     }
 
     private async Task InitializeAsync()
     {
+        int version = _definitionVersion;
         IsLoading = true;
         Error = null;
         try
         {
-            Spec = await _controller.GetSpecAsync(Device, _token);
+            SpecInstance? spec = await _controller.GetSpecAsync(Device, _token);
             _token.ThrowIfCancellationRequested();
+            if (version != _definitionVersion)
+            {
+                return;
+            }
+
+            Spec = spec;
             OnPropertyChanged(nameof(ClassName));
             if (Spec is null)
             {
@@ -253,36 +372,59 @@ public sealed partial class DeviceRowViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            if (!_token.IsCancellationRequested)
+            if (!_token.IsCancellationRequested && version == _definitionVersion)
             {
                 Error = DeviceErrorText.Describe(ex);
             }
         }
         finally
         {
-            IsLoading = false;
-            SyncPower();
+            if (version == _definitionVersion)
+            {
+                IsLoading = false;
+                SyncPower();
+            }
         }
     }
 
-    private async Task ReadSnapshotAsync(CancellationToken token)
+    private async Task ReadSnapshotAsync(CancellationToken token, int version)
     {
         MiPropertyKey[] keys = _sensors.Select(item => new MiPropertyKey(item.Service.Iid, item.Property.Iid))
             .Concat(Power is { Property.Readable: true } ? [Power.Key] : Array.Empty<MiPropertyKey>()).Distinct().ToArray();
         if (keys.Length == 0)
         {
+            // Nothing readable is defined, so any reading left from an older definition is stale.
+            SensorReadings.Clear();
             _hasLoadedValues = true;
             OnPropertyChanged(nameof(TileStateText));
             OnPropertyChanged(nameof(ShowsReadingPlaceholder));
             return;
         }
 
-        long? powerVersion = Power is { IsBusy: false, HasPendingChanges: false } ? Power.PollVersion : null;
+        long? powerVersion = Power is { Property.Readable: true, IsBusy: false, HasPendingChanges: false } ? Power.PollVersion : null;
         IReadOnlyDictionary<MiPropertyKey, JsonElement> values = await _controller.ReadAsync(Device, keys, token);
         token.ThrowIfCancellationRequested();
-        if (Power is not null && powerVersion is { } version && values.TryGetValue(Power.Key, out JsonElement power))
+        if (version != _definitionVersion)
         {
-            Power.TryApplyPolledValue(power, version);
+            // The control identity changed while the read was in flight; the new definitions
+            // own the next value.
+            return;
+        }
+
+        if (Power is { Property.Readable: true } && powerVersion is { } pollVersion)
+        {
+            if (values.TryGetValue(Power.Key, out JsonElement power) &&
+                power.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined)
+            {
+                Power.TryApplyPolledValue(power, pollVersion);
+            }
+            else
+            {
+                // A successful read that omits the power property means there is no current
+                // value. Keeping it available would leave the tile and group writes acting on a
+                // reading the device no longer reports.
+                Power.MarkPolledValueMissing(pollVersion);
+            }
         }
 
         SensorReadings.Clear();
@@ -446,13 +588,33 @@ public sealed partial class DeviceRowViewModel : ObservableObject
             Error = operationError;
         }
 
-        if (e.PropertyName == nameof(PropertyRowViewModel.IsBusy))
+        if (e.PropertyName is nameof(PropertyRowViewModel.IsBusy) or nameof(ActionRowViewModel.IsBusy))
         {
             OnPropertyChanged(nameof(HasOperations));
         }
     }
 
     partial void OnIsChangingChanged(bool value) => OnPropertyChanged(nameof(HasOperations));
+
+    partial void OnIsInventoryVerifiedChanged(bool value)
+    {
+        foreach (PropertyRowViewModel property in _properties.Values)
+        {
+            property.NotifyInventoryStateChanged();
+        }
+
+        if (_actions is not null)
+        {
+            foreach (ActionRowViewModel action in _actions.SelectMany(service => service.Actions))
+            {
+                action.NotifyInventoryStateChanged();
+            }
+        }
+
+        OnPropertyChanged(nameof(CanToggle));
+        OnPropertyChanged(nameof(PowerHelpText));
+        OnPropertyChanged(nameof(PowerAccessibleName));
+    }
 
     partial void OnIsRemovedChanged(bool value)
     {

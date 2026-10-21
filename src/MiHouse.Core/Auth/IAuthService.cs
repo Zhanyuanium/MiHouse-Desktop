@@ -27,7 +27,8 @@ public interface IAuthService
     Task<MiHomeSession?> PollQrLoginAsync(QrLoginTicket ticket, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Password login, including the 2FA ticket flow when the account requires it.
+    /// Password login. Accounts that require two-factor authentication are rejected with
+    /// <see cref="MiAuthException"/>; use QR login for those.
     /// </summary>
     Task<MiHomeSession> LoginWithPasswordAsync(string account, string password, CancellationToken cancellationToken);
 }

@@ -41,6 +41,11 @@ public sealed partial class PropertyEditor : UserControl
         var editor = (TextBox)sender;
         if (IsArmed(editor, out var row) && editor.Text != row.EditorText) { await row.CommitTextAsync(editor.Text); }
     }
+    private void OnTextChanged(object sender, TextChangedEventArgs e)
+    {
+        var editor = (TextBox)sender;
+        if (IsArmed(editor, out var row)) { row.NoteEditorText(editor.Text); }
+    }
     private void OnTextKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Key == VirtualKey.Enter) { OnTextCommit(sender, e); e.Handled = true; }

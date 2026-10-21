@@ -598,7 +598,7 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
 
             // The cloud sends no room on devices; membership comes from the home's rooms.
             var room = roomNames.TryGetValue(did, out var roomName) ? roomName : null;
-            var (parentDid, channelSiid) = ReadSplit(item);
+            var (parentDid, channelSiid, splitMetadataIncomplete) = ReadSplit(item);
 
             var specType = ReadString(item, "spec_type");
             if (string.IsNullOrWhiteSpace(specType))
@@ -627,7 +627,8 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
                 parentDid,
                 channelSiid,
                 specType,
-                localIp));
+                localIp,
+                splitMetadataIncomplete));
         }
     }
 
@@ -780,20 +781,21 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
         };
     }
 
-    private static (string? ParentDid, int? ChannelSiid) ReadSplit(JsonElement device)
+    private static (string? ParentDid, int? ChannelSiid, bool Incomplete) ReadSplit(JsonElement device)
     {
         if (!device.TryGetProperty("extra", out var extra)
             || extra.ValueKind != JsonValueKind.Object
             || !extra.TryGetProperty("split", out var split)
             || split.ValueKind != JsonValueKind.Object)
         {
-            return (null, null);
+            // No split object: an ordinary device, not a malformed split identity.
+            return (null, null, false);
         }
 
         var parentDid = split.TryGetProperty("parentId", out var parent)
             ? NormalizeIdentifier(parent)
             : null;
-        if (string.IsNullOrEmpty(parentDid))
+        if (string.IsNullOrWhiteSpace(parentDid))
         {
             parentDid = null;
         }
@@ -801,8 +803,14 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
         var channelSiid = split.TryGetProperty("moduleId", out var module)
             ? ReadInt32Value(module)
             : null;
+        if (channelSiid is not > 0)
+        {
+            channelSiid = null;
+        }
 
-        return (parentDid, channelSiid);
+        // A present split object that does not name both halves must fail closed instead of
+        // falling back to parent-wide control as if this were an ordinary device.
+        return (parentDid, channelSiid, parentDid is null || channelSiid is null);
     }
 
     private static bool ReadBoolean(JsonElement item, string name)

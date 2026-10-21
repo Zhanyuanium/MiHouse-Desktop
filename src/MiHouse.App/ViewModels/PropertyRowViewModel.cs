@@ -10,11 +10,17 @@ namespace MiHouse.App.ViewModels;
 [Microsoft.UI.Xaml.Data.Bindable]
 public sealed partial class PropertyRowViewModel : ObservableObject
 {
+    // max(10 s, two 6 s detail poll cycles): after this the next successful read wins, even when
+    // the device never reports the written value.
+    private static readonly TimeSpan _writeConfirmationWindow = TimeSpan.FromSeconds(12);
+    private readonly DeviceRowViewModel _owner;
     private readonly IDeviceController _controller;
-    private readonly MiDevice _device;
     private readonly CancellationToken _token;
+    private readonly int _definitionVersion;
     private bool _isUpdatingValue = true;
+    private bool _hasEditorDraft;
     private long _pollVersion;
+    private DateTimeOffset _writeProtectionDeadline;
     private JsonElement? _lastWrittenValue;
     private JsonElement? _lastKnownValue;
 
@@ -65,12 +71,12 @@ public sealed partial class PropertyRowViewModel : ObservableObject
 
     public bool HasLongValue => TextValue.Length > 120;
 
-    public PropertyRowViewModel(IDeviceController controller, MiDevice device,
-        string serviceName, int siid, SpecProperty property, JsonElement? value, CancellationToken token)
+    public PropertyRowViewModel(DeviceRowViewModel owner, string serviceName, int siid, SpecProperty property, JsonElement? value, CancellationToken token)
     {
-        _controller = controller;
-        _device = device;
+        _owner = owner;
+        _controller = owner.Controller;
         _token = token;
+        _definitionVersion = owner.DefinitionVersion;
         TextValue = string.Empty;
         Property = property;
         ServiceName = serviceName;
@@ -104,7 +110,7 @@ public sealed partial class PropertyRowViewModel : ObservableObject
     public bool IsReadOnly => !IsEditable;
     public string EditorText { get; set; } = string.Empty;
     public bool IsEditableRange => IsRange && IsEditable;
-    public bool CanEdit => !IsRemoved && IsEditable && !IsBusy && !_token.IsCancellationRequested;
+    public bool CanEdit => !IsRemoved && IsEditable && _owner.IsInventoryVerified && !IsBusy && !_token.IsCancellationRequested;
     public bool IsInteger => Property.Format.StartsWith("int", StringComparison.Ordinal) || Property.Format.StartsWith("uint", StringComparison.Ordinal);
     public bool IsNumeric => IsInteger || Property.Format is "float" or "double";
     public double Minimum => Property.Range?.Min ?? 0;
@@ -120,8 +126,24 @@ public sealed partial class PropertyRowViewModel : ObservableObject
 
     internal void DiscardPendingChanges()
     {
+        bool wasDrafting = _hasEditorDraft;
+        _hasEditorDraft = false;
         if (IsBusy || !HasPendingChanges)
         {
+            if (!IsBusy && wasDrafting)
+            {
+                // Closing the details or leaving the row abandons the typed draft.
+                if (_lastKnownValue is { } latest)
+                {
+                    ReadValue(latest);
+                }
+                else
+                {
+                    EditorText = string.Empty;
+                    OnPropertyChanged(nameof(EditorText));
+                }
+            }
+
             return;
         }
 
@@ -140,6 +162,8 @@ public sealed partial class PropertyRowViewModel : ObservableObject
             NumericValue = Minimum;
             SelectedOption = null;
             TextValue = string.Empty;
+            EditorText = string.Empty;
+            OnPropertyChanged(nameof(EditorText));
             HasValue = false;
             HasPendingChanges = false;
         }
@@ -147,6 +171,27 @@ public sealed partial class PropertyRowViewModel : ObservableObject
         {
             _isUpdatingValue = wasUpdating;
         }
+    }
+
+    /// <summary>
+    /// Records typed text so a poll cannot replace it. A value that already matches
+    /// <see cref="EditorText"/> came from the binding, not from the user.
+    /// </summary>
+    internal void NoteEditorText(string text)
+    {
+        if (text == EditorText)
+        {
+            _hasEditorDraft = false;
+            return;
+        }
+
+        _hasEditorDraft = true;
+    }
+
+    internal void NotifyInventoryStateChanged()
+    {
+        OnPropertyChanged(nameof(CanEdit));
+        ApplyCommand.NotifyCanExecuteChanged();
     }
 
     internal void TryApplyPolledValue(JsonElement value, long version)
@@ -158,13 +203,58 @@ public sealed partial class PropertyRowViewModel : ObservableObject
             return;
         }
 
-        if (IsWriteUnconfirmed && _lastWrittenValue is { } written && !JsonElement.DeepEquals(value, written))
+        if (IsWriteUnconfirmed)
+        {
+            bool matchesWritten = _lastWrittenValue is { } written && JsonElement.DeepEquals(value, written);
+            if (!matchesWritten && DateTimeOffset.UtcNow < _writeProtectionDeadline)
+            {
+                return;
+            }
+
+            // The written value arrived, or the bounded protection expired: the read is the truth.
+            IsWriteUnconfirmed = false;
+        }
+
+        ReadValue(value, updateEditor: !_hasEditorDraft);
+    }
+
+    /// <summary>
+    /// A successful read did not return this property. The old value may stay in the editor, but
+    /// it is no longer the device's current value: clear the available flag so nothing writes
+    /// from it until the device reports again.
+    /// </summary>
+    internal void MarkPolledValueMissing(long version)
+    {
+        if (version != _pollVersion || HasPendingChanges || IsBusy || !HasValue)
         {
             return;
         }
 
-        ReadValue(value);
-        IsWriteUnconfirmed = false;
+        bool wasUpdating = _isUpdatingValue;
+        _isUpdatingValue = true;
+        try
+        {
+            HasValue = false;
+        }
+        finally
+        {
+            _isUpdatingValue = wasUpdating;
+        }
+    }
+
+    /// <summary>
+    /// True while this row still belongs to the owner's current definitions. A rebuild means the
+    /// service/property identity changed and this row's key must not be sent to the new device.
+    /// </summary>
+    private bool EnsureDefinitionCurrent()
+    {
+        if (_owner.DefinitionVersion == _definitionVersion)
+        {
+            return true;
+        }
+
+        Error = "设备定义已更新，本次修改未执行。请重新打开设备详情后重试。";
+        return false;
     }
 
     [RelayCommand(CanExecute = nameof(CanApply))]
@@ -177,6 +267,11 @@ public sealed partial class PropertyRowViewModel : ObservableObject
         }
 
         if (!CanApply())
+        {
+            return;
+        }
+
+        if (!EnsureDefinitionCurrent())
         {
             return;
         }
@@ -200,44 +295,81 @@ public sealed partial class PropertyRowViewModel : ObservableObject
                 numericValue = Math.Clamp(numericValue, range.Min, range.Max);
             }
 
-            JsonElement value = IsText && Property.Format == "string" ? JsonSerializer.SerializeToElement(EditorText)
-                : IsText && IsInteger ? JsonDocument.Parse(EditorText).RootElement.Clone()
-                : IsText && IsNumeric ? JsonSerializer.SerializeToElement(double.Parse(EditorText, CultureInfo.InvariantCulture))
-                : IsBoolean
-                ? JsonSerializer.SerializeToElement(BoolValue)
-                : IsChoice
-                    ? JsonSerializer.SerializeToElement(SelectedOption!.Value)
-                    : IsInteger
-                        ? JsonSerializer.SerializeToElement((long)Math.Round(numericValue))
-                        : JsonSerializer.SerializeToElement(numericValue);
+            JsonElement value;
+            if (IsText && Property.Format == "string")
+            {
+                value = JsonSerializer.SerializeToElement(EditorText);
+            }
+            else if (IsText && IsInteger)
+            {
+                // User text is parsed with the declared width and sign, then written as a number;
+                // raw text such as "+1" or "001" is not JSON.
+                if (!TryParseIntegerText(EditorText, out value))
+                {
+                    Error = "请输入有效整数";
+                    return;
+                }
+            }
+            else if (IsText && IsNumeric)
+            {
+                value = JsonSerializer.SerializeToElement(double.Parse(EditorText, CultureInfo.InvariantCulture));
+            }
+            else
+            {
+                value = IsBoolean
+                    ? JsonSerializer.SerializeToElement(BoolValue)
+                    : IsChoice
+                        ? JsonSerializer.SerializeToElement(SelectedOption!.Value)
+                        : IsInteger
+                            ? JsonSerializer.SerializeToElement((long)Math.Round(numericValue))
+                            : JsonSerializer.SerializeToElement(numericValue);
+            }
             if (IsRemoved)
             {
                 Error = "设备已不在当前家庭";
                 return;
             }
 
-            await _controller.WriteAsync(_device, Key, value, _token);
+            // The confirmation-free write path still checks the definition twice: once when
+            // the command starts and once immediately before the request leaves the client.
+            if (!EnsureDefinitionCurrent())
+            {
+                return;
+            }
+
+            await _controller.WriteAsync(_owner.Device, Key, value, _token);
             _token.ThrowIfCancellationRequested();
+            if (_owner.DefinitionVersion != _definitionVersion)
+            {
+                // The write went to the device snapshot captured by the controller. A definition
+                // rebuild owns the new target now; do not verify the old key against it or claim
+                // the write did not happen.
+                return;
+            }
             _lastWrittenValue = value.Clone();
+            _writeProtectionDeadline = DateTimeOffset.UtcNow + _writeConfirmationWindow;
             ReadValue(value);
-            IsWriteUnconfirmed = true;
+            // Without a readable value there is no poll that could overwrite the optimistic
+            // state, so it needs no protection flag.
             if (!Property.Readable)
             {
                 return;
             }
+
+            IsWriteUnconfirmed = true;
 
             foreach (int delay in new[] { 300, 700, 1500 })
             {
                 await Task.Delay(delay, _token);
                 try
                 {
-                    IReadOnlyDictionary<MiPropertyKey, JsonElement> values = await _controller.ReadAsync(_device, [Key], _token);
+                    IReadOnlyDictionary<MiPropertyKey, JsonElement> values = await _controller.ReadAsync(_owner.Device, [Key], _token);
                     _token.ThrowIfCancellationRequested();
                     if (values.TryGetValue(Key, out JsonElement current) &&
                         current.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined &&
                         JsonElement.DeepEquals(current, value))
                     {
-                        ReadValue(current);
+                        ReadValue(current, updateEditor: !_hasEditorDraft);
                         IsWriteUnconfirmed = false;
                         break;
                     }
@@ -268,7 +400,7 @@ public sealed partial class PropertyRowViewModel : ObservableObject
         }
     }
 
-    private void ReadValue(JsonElement value)
+    private void ReadValue(JsonElement value, bool updateEditor = true)
     {
         bool wasUpdating = _isUpdatingValue;
         _isUpdatingValue = true;
@@ -288,8 +420,16 @@ public sealed partial class PropertyRowViewModel : ObservableObject
             }
 
             _lastKnownValue = value.Clone();
-            EditorText = value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.GetRawText();
-            OnPropertyChanged(nameof(EditorText));
+            if (updateEditor)
+            {
+                string text = value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.GetRawText();
+                if (EditorText != text)
+                {
+                    EditorText = text;
+                    OnPropertyChanged(nameof(EditorText));
+                }
+            }
+
             HasValue = true;
             HasPendingChanges = false;
         }
@@ -314,6 +454,8 @@ public sealed partial class PropertyRowViewModel : ObservableObject
     public async Task CommitTextAsync(string text)
     {
         if (!CanEdit || !IsText) { return; }
+        // Keep the typed draft protected until the value is actually handed to the write.
+        _hasEditorDraft = true;
         EditorText = text;
         HasPendingChanges = true;
         if (IsNumeric)
@@ -322,22 +464,91 @@ public sealed partial class PropertyRowViewModel : ObservableObject
             { Error = "请输入有效数值"; return; }
             if (IsInteger)
             {
-                bool valid = Property.Format switch
-                {
-                    "uint64" => ulong.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
-                    "uint32" => uint.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
-                    "uint16" => ushort.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
-                    "uint8" => byte.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
-                    "int32" => int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
-                    "int16" => short.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
-                    "int8" => sbyte.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
-                    _ => long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)
-                };
-                if (!valid) { Error = "请输入有效整数"; return; }
+                if (!TryParseIntegerText(text, out _)) { Error = "请输入有效整数"; return; }
             }
             if (Property.Range is { } range && (number < range.Min || number > range.Max)) { Error = "数值超出设备允许范围"; return; }
         }
         HasPendingChanges = true;
-        if (ApplyCommand.CanExecute(null)) { await ApplyCommand.ExecuteAsync(null); }
+        if (ApplyCommand.CanExecute(null))
+        {
+            _hasEditorDraft = false;
+            await ApplyCommand.ExecuteAsync(null);
+        }
+    }
+
+    /// <summary>
+    /// Parses typed integer text with the property's declared width and sign and serializes it as
+    /// a JSON number, so values such as <c>+1</c> or <c>001</c> never reach JSON as raw text.
+    /// </summary>
+    private bool TryParseIntegerText(string text, out JsonElement value)
+    {
+        value = default;
+        switch (Property.Format)
+        {
+            case "uint64":
+                if (!ulong.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong u64))
+                {
+                    return false;
+                }
+
+                value = JsonSerializer.SerializeToElement(u64);
+                return true;
+            case "uint32":
+                if (!uint.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out uint u32))
+                {
+                    return false;
+                }
+
+                value = JsonSerializer.SerializeToElement(u32);
+                return true;
+            case "uint16":
+                if (!ushort.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort u16))
+                {
+                    return false;
+                }
+
+                value = JsonSerializer.SerializeToElement(u16);
+                return true;
+            case "uint8":
+                if (!byte.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out byte u8))
+                {
+                    return false;
+                }
+
+                value = JsonSerializer.SerializeToElement(u8);
+                return true;
+            case "int8":
+                if (!sbyte.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out sbyte i8))
+                {
+                    return false;
+                }
+
+                value = JsonSerializer.SerializeToElement(i8);
+                return true;
+            case "int16":
+                if (!short.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out short i16))
+                {
+                    return false;
+                }
+
+                value = JsonSerializer.SerializeToElement(i16);
+                return true;
+            case "int32":
+                if (!int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int i32))
+                {
+                    return false;
+                }
+
+                value = JsonSerializer.SerializeToElement(i32);
+                return true;
+            default:
+                if (!long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out long i64))
+                {
+                    return false;
+                }
+
+                value = JsonSerializer.SerializeToElement(i64);
+                return true;
+        }
     }
 }

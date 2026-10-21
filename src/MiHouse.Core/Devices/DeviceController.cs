@@ -70,6 +70,12 @@ public sealed class DeviceController : IDeviceController
             return null;
         }
 
+        if (device.IsSplitIncomplete || device.IsSplitMetadataIncomplete)
+        {
+            // Never expose the parent's full service set as writable for a channel we cannot address.
+            return spec with { Services = [] };
+        }
+
         if (device.ChannelSiid is not int channelSiid)
         {
             return spec;
@@ -243,6 +249,13 @@ public sealed class DeviceController : IDeviceController
 
     private static void EnsureChannel(MiDevice device, int siid)
     {
+        if (device.IsSplitIncomplete || device.IsSplitMetadataIncomplete)
+        {
+            throw new MiDeviceException(
+                $"Device '{device.Did}' cannot be controlled because Mi Home did not report a complete " +
+                "split-device identity (parent device and channel). Refresh the device list and try again.");
+        }
+
         if (device.ChannelSiid is not int channelSiid || siid == channelSiid)
         {
             return;

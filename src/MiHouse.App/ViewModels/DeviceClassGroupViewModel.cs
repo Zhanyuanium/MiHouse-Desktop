@@ -74,13 +74,18 @@ public sealed partial class DeviceClassGroupViewModel : ObservableCollection<Dev
         {
             // Stay on the UI context: the shared rows own optimistic state and
             // removal gates. Bound the async I/O, not thread-pool work.
+            int skipped = 0;
             string?[] results = await Task.WhenAll(this.ToArray().Select(async device =>
             {
                 await concurrency.WaitAsync();
                 try
                 {
                     // Recheck after waiting; a refresh may remove a queued device.
-                    if (device.IsRemoved || !device.CanToggle) { return null; }
+                    if (device.IsRemoved || !device.CanToggle)
+                    {
+                        Interlocked.Increment(ref skipped);
+                        return null;
+                    }
                     if (device.IsOn == desired) { return null; }
                     await device.SetPowerAsync(desired);
                     return device.Power?.Error is { } error ? $"{device.Name}：{error}" : null;
@@ -89,7 +94,14 @@ public sealed partial class DeviceClassGroupViewModel : ObservableCollection<Dev
                 finally { concurrency.Release(); }
             }));
             var notices = results.OfType<string>().ToList();
-            // Only real errors are announced; a successful or partial write is silent.
+            if (skipped > 0)
+            {
+                // The switch tooltip promises the skips are called out, and silence hid them.
+                notices.Add($"{skipped} 台设备已跳过（离线或不可控）");
+            }
+
+            // Only real errors and skipped devices are announced; a successful or partial write
+            // is silent.
             Notice = notices.Count > 0 ? string.Join("；", notices) : null;
         }
         finally { IsBusy = false; }

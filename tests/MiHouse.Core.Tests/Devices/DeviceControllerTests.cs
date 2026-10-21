@@ -94,6 +94,29 @@ public sealed class DeviceControllerTests
     }
 
     [Fact]
+    public async Task GetSpecAsyncReturnsNoServicesForIncompleteSplit()
+    {
+        var spec = CreateSpec("urn:device:switch", 2, 3, 4);
+        var specs = new FakeSpecCatalog();
+        specs.ByUrn[spec.Type] = spec;
+        var controller = CreateController(specs);
+        var device = new MiDevice(
+            "parent.s4",
+            "model.x",
+            "Channel 4",
+            null,
+            true,
+            "parent",
+            SpecType: spec.Type);
+
+        var resolved = await controller.GetSpecAsync(device, CancellationToken.None);
+
+        Assert.NotNull(resolved);
+        Assert.Empty(resolved.Services);
+        Assert.Equal(3, spec.Services.Count);
+    }
+
+    [Fact]
     public async Task GetSpecAsyncReturnsAllServicesForNormalDevice()
     {
         var spec = CreateSpec("urn:device:switch", 2, 3, 4);
@@ -123,6 +146,7 @@ public sealed class DeviceControllerTests
             true,
             parentDid,
             parentDid is null ? null : 4);
+        Assert.False(device.IsSplitIncomplete);
         MiPropertyKey property = new(4, 1);
         cloud.ReadResult = [new MiPropertyValue(property, JsonSerializer.SerializeToElement(7))];
         cloud.InvokeResult = JsonSerializer.SerializeToElement("done");
@@ -174,6 +198,78 @@ public sealed class DeviceControllerTests
 
         Assert.Contains("4", error.Message);
         Assert.Empty(cloud.Writes);
+    }
+
+    [Fact]
+    public async Task WriteAsyncIncompleteSplitThrowsWithoutReachingParent()
+    {
+        var cloud = new FakeCloud();
+        var controller = CreateController(new FakeSpecCatalog(), cloud);
+        var device = new MiDevice(
+            "device.s4",
+            "model.x",
+            "Channel 4",
+            null,
+            true,
+            "2000420370");
+
+        var error = await Assert.ThrowsAsync<MiDeviceException>(() => controller.WriteAsync(
+            device,
+            new MiPropertyKey(2, 1),
+            JsonSerializer.SerializeToElement(true),
+            CancellationToken.None));
+
+        Assert.Contains(device.Did, error.Message);
+        Assert.Empty(cloud.Writes);
+    }
+
+    [Fact]
+    public async Task GetSpecAsyncReturnsNoServicesForIncompleteSplitMetadata()
+    {
+        var spec = CreateSpec("urn:device:switch", 2, 3, 4);
+        var specs = new FakeSpecCatalog();
+        specs.ByUrn[spec.Type] = spec;
+        var controller = CreateController(specs);
+        // An empty split object leaves both parent and channel unset, so IsSplitIncomplete
+        // alone cannot distinguish it from an ordinary device.
+        var device = new MiDevice(
+            "a.s2",
+            "model.x",
+            "Channel",
+            null,
+            true,
+            SpecType: spec.Type,
+            IsSplitMetadataIncomplete: true);
+        Assert.False(device.IsSplitIncomplete);
+
+        var resolved = await controller.GetSpecAsync(device, CancellationToken.None);
+
+        Assert.NotNull(resolved);
+        Assert.Empty(resolved.Services);
+        Assert.Equal(3, spec.Services.Count);
+    }
+
+    [Fact]
+    public async Task InvokeAsyncIncompleteSplitMetadataThrowsWithoutReachingParent()
+    {
+        var cloud = new FakeCloud();
+        var controller = CreateController(new FakeSpecCatalog(), cloud);
+        var device = new MiDevice(
+            "a.s2",
+            "model.x",
+            "Channel",
+            null,
+            true,
+            IsSplitMetadataIncomplete: true);
+
+        var error = await Assert.ThrowsAsync<MiDeviceException>(() => controller.InvokeAsync(
+            device,
+            new MiActionKey(2, 1),
+            [],
+            CancellationToken.None));
+
+        Assert.Contains(device.Did, error.Message);
+        Assert.Empty(cloud.Invokes);
     }
 
     [Fact]

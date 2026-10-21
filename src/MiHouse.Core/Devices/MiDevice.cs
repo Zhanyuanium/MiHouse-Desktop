@@ -19,6 +19,11 @@ namespace MiHouse.Core.Devices;
 /// <param name="SpecType">
 /// Exact miot-spec URN reported by the cloud for this device, when available.
 /// </param>
+/// <param name="LocalIp">Private LAN address reported by the cloud, when available.</param>
+/// <param name="IsSplitMetadataIncomplete">
+/// True when the cloud reported a <c>split</c> object without a usable parent and channel. This
+/// is distinct from a device that reports no split metadata at all, which is an ordinary device.
+/// </param>
 public sealed record MiDevice(
     string Did,
     string Model,
@@ -28,13 +33,24 @@ public sealed record MiDevice(
     string? ParentDid = null,
     int? ChannelSiid = null,
     string? SpecType = null,
-    string? LocalIp = null)
+    string? LocalIp = null,
+    bool IsSplitMetadataIncomplete = false)
 {
     /// <summary>
     /// Device id to use for control requests: the parent for split sub-devices, otherwise
     /// <see cref="Did"/>.
     /// </summary>
     public string ControlDid => ParentDid ?? Did;
+
+    /// <summary>
+    /// True when the cloud reported a split identity that cannot be addressed safely: a parent
+    /// without a positive <see cref="ChannelSiid"/>, or a channel without a parent. Such a device
+    /// must not fall back to parent-wide control.
+    /// </summary>
+    public bool IsSplitIncomplete =>
+        !string.IsNullOrEmpty(ParentDid)
+            ? ChannelSiid is not > 0
+            : ChannelSiid is not null;
 }
 
 /// <summary>

@@ -7,6 +7,7 @@ public sealed partial class DevicesViewModel
 {
     private readonly Dictionary<string, DeviceRowViewModel> _deviceRows = new(StringComparer.Ordinal);
     private CancellationTokenSource? _homeLifetime;
+    private string? _verifiedHomeId;
     private bool _observesEnvironmentReadings;
     public bool AreReadingsLoading => !HasSensorReadings && _deviceRows.Values.Any(row => !row.IsRemoved && row.IsLoading);
     public bool HasNoSensorReadings => !HasSensorReadings && !AreReadingsLoading;
@@ -17,7 +18,7 @@ public sealed partial class DevicesViewModel
         OnPropertyChanged(nameof(HasNoSensorReadings));
     }
 
-    private DeviceRowViewModel[] MergeDevices(IReadOnlyList<MiDevice> devices, bool isLoading = false)
+    private DeviceRowViewModel[] MergeDevices(IReadOnlyList<MiDevice> devices, bool isLoading = false, bool inventoryVerified = true)
     {
         if (!_observesEnvironmentReadings)
         {
@@ -35,9 +36,17 @@ public sealed partial class DevicesViewModel
             }
             else
             {
-                row = new DeviceRowViewModel(device, _controller, _homeLifetime.Token, isLoading);
+                row = new DeviceRowViewModel(device, _controller, _homeLifetime.Token, isLoading, inventoryVerified);
                 row.PropertyChanged += OnDeviceOperationChanged;
+                row.ControlIdentityChanged += OnDeviceControlIdentityChanged;
                 _deviceRows.Add(device.Did, row);
+            }
+
+            if (inventoryVerified)
+            {
+                // Only a successful network list for the current home proves membership and
+                // control addresses; a cached row keeps its writes blocked.
+                row.IsInventoryVerified = true;
             }
         }
 
@@ -53,6 +62,16 @@ public sealed partial class DevicesViewModel
 
         NotifyEnvironmentReadingsState();
         return _deviceRows.Values.ToArray();
+    }
+
+    private void OnDeviceControlIdentityChanged(DeviceRowViewModel row)
+    {
+        // The parent channel or spec changed under an open sheet: rebuild its rows from the new
+        // definitions instead of leaving stale keys and device snapshots.
+        if (ReferenceEquals(SelectedDevice, row))
+        {
+            _ = LoadPropertiesAsync(row);
+        }
     }
 
     private void OnDeviceOperationChanged(object? sender, PropertyChangedEventArgs e)
@@ -79,6 +98,7 @@ public sealed partial class DevicesViewModel
     private void DropDevice(DeviceRowViewModel row)
     {
         row.PropertyChanged -= OnDeviceOperationChanged;
+        row.ControlIdentityChanged -= OnDeviceControlIdentityChanged;
         _deviceRows.Remove(row.Device.Did);
         if (ReferenceEquals(SelectedDevice, row))
         {
@@ -115,10 +135,12 @@ public sealed partial class DevicesViewModel
         foreach (DeviceRowViewModel row in _deviceRows.Values)
         {
             row.PropertyChanged -= OnDeviceOperationChanged;
+            row.ControlIdentityChanged -= OnDeviceControlIdentityChanged;
             row.StopOperations();
         }
 
         _deviceRows.Clear();
+        _verifiedHomeId = null;
         _homeLifetime?.Cancel();
         _homeLifetime?.Dispose();
         _homeLifetime = null;

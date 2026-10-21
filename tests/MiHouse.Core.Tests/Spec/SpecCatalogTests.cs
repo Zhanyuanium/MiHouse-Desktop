@@ -342,6 +342,104 @@ public sealed class SpecCatalogTests : IDisposable
     }
 
     [Fact]
+    public async Task GetForModelAsync_EmptyIndexObject_ThrowsMiSpecException()
+    {
+        var diskCache = new SpecDiskCache(_directory);
+        var handler = new StubHandler(_ => JsonResponse("{}"));
+        var catalog = new SpecCatalog(new HttpClient(handler), diskCache);
+
+        await Assert.ThrowsAsync<MiSpecException>(
+            () => catalog.GetForModelAsync("test.light.one", CancellationToken.None));
+
+        Assert.Null(diskCache.TryRead("instances?status=released"));
+    }
+
+    [Fact]
+    public async Task GetAsync_EmptySpecObject_ThrowsMiSpecException()
+    {
+        var diskCache = new SpecDiskCache(_directory);
+        var handler = new StubHandler(_ => JsonResponse("{}"));
+        var catalog = new SpecCatalog(new HttpClient(handler), diskCache);
+
+        await Assert.ThrowsAsync<MiSpecException>(
+            () => catalog.GetAsync(_deviceType, CancellationToken.None));
+
+        Assert.Null(diskCache.TryRead(_deviceType));
+    }
+
+    [Fact]
+    public async Task GetAsync_SpecWithNullService_ThrowsMiSpecException()
+    {
+        var handler = new StubHandler(_ => JsonResponse(
+            """{"type":"urn:miot-spec-v2:device:light:0000A001:test-one:1","services":[null]}"""));
+        var catalog = new SpecCatalog(new HttpClient(handler));
+
+        var exception = await Assert.ThrowsAsync<MiSpecException>(
+            () => catalog.GetAsync(_deviceType, CancellationToken.None));
+
+        Assert.Contains("empty service", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("""{"type":"urn:miot-spec-v2:device:light:0000A001:test-one:1"}""")]
+    [InlineData("""{"services":[]}""")]
+    [InlineData("""{"type":"urn:miot-spec-v2:device:light:0000A001:test-one:1","services":null}""")]
+    public async Task GetAsync_SpecMissingRequiredFields_ThrowsMiSpecException(string json)
+    {
+        var handler = new StubHandler(_ => JsonResponse(json));
+        var catalog = new SpecCatalog(new HttpClient(handler));
+
+        await Assert.ThrowsAsync<MiSpecException>(
+            () => catalog.GetAsync(_deviceType, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GetAsync_StructurallyInvalidCachedSpec_IsMissAndReplacedByNetwork()
+    {
+        var diskCache = new SpecDiskCache(_directory);
+        diskCache.Write(_deviceType, "{}");
+        var handler = new StubHandler(_ => JsonResponse(_specJson));
+        var catalog = new SpecCatalog(new HttpClient(handler), diskCache);
+
+        var spec = await catalog.GetAsync(_deviceType, CancellationToken.None);
+
+        var instance = Assert.IsType<SpecInstance>(spec);
+        Assert.Equal(_deviceType, instance.Type);
+        Assert.Equal(1, handler.CountRequests("/instance"));
+        Assert.Equal(_specJson, diskCache.TryRead(_deviceType));
+    }
+
+    [Fact]
+    public async Task GetForModelAsync_StructurallyInvalidCachedIndex_IsMissAndReplacedByNetwork()
+    {
+        var diskCache = new SpecDiskCache(_directory);
+        diskCache.Write("instances?status=released", "{}");
+        var handler = new StubHandler(request => IsIndexRequest(request)
+            ? JsonResponse(_indexJson)
+            : JsonResponse(_specJson));
+        var catalog = new SpecCatalog(new HttpClient(handler), diskCache);
+
+        var spec = await catalog.GetForModelAsync("test.light.one", CancellationToken.None);
+
+        Assert.IsType<SpecInstance>(spec);
+        Assert.Equal(1, handler.CountRequests("/instances"));
+        Assert.Equal(_indexJson, diskCache.TryRead("instances?status=released"));
+    }
+
+    [Fact]
+    public async Task GetAsync_StructurallyInvalidNetworkSpec_IsNotCached()
+    {
+        var diskCache = new SpecDiskCache(_directory);
+        var handler = new StubHandler(_ => JsonResponse("{}"));
+        var catalog = new SpecCatalog(new HttpClient(handler), diskCache);
+
+        await Assert.ThrowsAsync<MiSpecException>(
+            () => catalog.GetAsync(_deviceType, CancellationToken.None));
+
+        Assert.Null(diskCache.TryRead(_deviceType));
+    }
+
+    [Fact]
     public async Task GetForModelAsync_MissingSpec_ReturnsNull()
     {
         var handler = new StubHandler(request => IsIndexRequest(request)

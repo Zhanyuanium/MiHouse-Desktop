@@ -17,7 +17,7 @@ public sealed class DetailSectionHeader(string name, bool isAdvanced, ICommand? 
 public sealed partial class DevicesViewModel
 {
     public ObservableCollection<object> DetailRows { get; } = [];
-    public bool HasDetailStatus => IsDetailBusy || !string.IsNullOrWhiteSpace(DetailMessage) || !string.IsNullOrWhiteSpace(DetailError);
+    public bool HasDetailStatus => IsDetailBusy || !string.IsNullOrWhiteSpace(DetailMessage) || !string.IsNullOrWhiteSpace(DetailError) || !string.IsNullOrWhiteSpace(DetailStaleMessage);
     [ObservableProperty]
     public partial bool IsAdvancedExpanded { get; set; }
     [RelayCommand]

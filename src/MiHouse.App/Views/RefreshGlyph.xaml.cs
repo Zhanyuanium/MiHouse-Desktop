@@ -31,12 +31,12 @@ public sealed partial class RefreshGlyph : UserControl
     }
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041)) { _settings.AnimationsEnabledChanged += OnAnimationsChanged; }
+        _settings.AnimationsEnabledChanged += OnAnimationsChanged;
         UpdateRotation();
     }
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041)) { _settings.AnimationsEnabledChanged -= OnAnimationsChanged; }
+        _settings.AnimationsEnabledChanged -= OnAnimationsChanged;
         var visual = ElementCompositionPreview.GetElementVisual(Glyph);
         visual.StopAnimation("RotationAngleInDegrees");
         visual.RotationAngleInDegrees = 0;

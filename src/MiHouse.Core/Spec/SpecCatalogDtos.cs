@@ -24,7 +24,7 @@ internal sealed class SpecIndexEntryDto
 internal sealed class SpecIndexDto
 {
     [JsonPropertyName("instances")]
-    public List<SpecIndexEntryDto>? Instances { get; set; }
+    public List<SpecIndexEntryDto?>? Instances { get; set; }
 }
 
 /// <summary>
@@ -39,7 +39,7 @@ internal sealed class SpecInstanceDto
     public string? Description { get; set; }
 
     [JsonPropertyName("services")]
-    public List<SpecServiceDto>? Services { get; set; }
+    public List<SpecServiceDto?>? Services { get; set; }
 }
 
 /// <summary>
@@ -60,10 +60,10 @@ internal sealed class SpecServiceDto
     public string? Comment { get; set; }
 
     [JsonPropertyName("properties")]
-    public List<SpecPropertyDto>? Properties { get; set; }
+    public List<SpecPropertyDto?>? Properties { get; set; }
 
     [JsonPropertyName("actions")]
-    public List<SpecActionDto>? Actions { get; set; }
+    public List<SpecActionDto?>? Actions { get; set; }
 }
 
 /// <summary>
@@ -90,7 +90,7 @@ internal sealed class SpecPropertyDto
     public List<string>? Access { get; set; }
 
     [JsonPropertyName("value-list")]
-    public List<SpecValueListDto>? ValueList { get; set; }
+    public List<SpecValueListDto?>? ValueList { get; set; }
 
     [JsonPropertyName("value-range")]
     public List<double>? ValueRange { get; set; }

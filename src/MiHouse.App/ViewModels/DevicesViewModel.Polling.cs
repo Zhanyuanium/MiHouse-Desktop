@@ -11,7 +11,7 @@ public sealed partial class DevicesViewModel
     private CancellationTokenSource? _listPollLifetime;
     private Task _listPollTask = Task.CompletedTask;
     private MiPropertyKey[] _readableKeys = [];
-    private bool _hasLoadedValues;
+    private bool _hasDetailValues;
     private bool _isPollingActive;
 
     internal void SetPollingActive(bool active)
@@ -33,7 +33,8 @@ public sealed partial class DevicesViewModel
     {
         StopPolling();
         _readableKeys = [];
-        _hasLoadedValues = false;
+        _hasDetailValues = false;
+        DetailStaleMessage = null;
     }
 
     private void StartPolling()
@@ -46,7 +47,7 @@ public sealed partial class DevicesViewModel
         }
 
         _pollLifetime = CancellationTokenSource.CreateLinkedTokenSource(_selectionLifetime.Token);
-        _ = PollDeviceAsync(SelectedDevice.Device, _readableKeys, _pollLifetime.Token);
+        _ = PollDeviceAsync(SelectedDevice, _readableKeys, _pollLifetime.Token);
     }
 
     private void StopPolling()
@@ -175,21 +176,26 @@ public sealed partial class DevicesViewModel
         token.ThrowIfCancellationRequested();
         foreach (var snapshot in snapshots)
         {
-            if (values.TryGetValue(snapshot.Row.Key, out JsonElement value))
+            if (values.TryGetValue(snapshot.Row.Key, out JsonElement value) &&
+                value.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined)
             {
                 snapshot.Row.TryApplyPolledValue(value, snapshot.Version);
             }
+            else
+            {
+                // A successful read that omits the property is the device saying there is no
+                // current value; the previous one must not keep looking current.
+                snapshot.Row.MarkPolledValueMissing(snapshot.Version);
+            }
         }
 
-        _hasLoadedValues |= values.Any(pair => keys.Contains(pair.Key) &&
-            pair.Value.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined);
-        if (_hasLoadedValues)
-        {
-            DetailError = null;
-        }
+        _hasDetailValues = snapshots.Any(snapshot => snapshot.Row.HasValue);
+        // The last read is fresh again; the stale marker belongs to the previous failure.
+        DetailError = null;
+        DetailStaleMessage = null;
     }
 
-    private async Task PollDeviceAsync(MiDevice device, MiPropertyKey[] keys, CancellationToken token)
+    private async Task PollDeviceAsync(DeviceRowViewModel row, MiPropertyKey[] keys, CancellationToken token)
     {
         int failures = 0;
         TimeSpan nextInterval = TimeSpan.FromSeconds(6);
@@ -200,7 +206,8 @@ public sealed partial class DevicesViewModel
                 await Task.Delay(nextInterval, token);
                 try
                 {
-                    await ReadCurrentValuesAsync(device, keys, token);
+                    // Read through the row: a refresh may have replaced the control address.
+                    await ReadCurrentValuesAsync(row.Device, keys, token);
                     failures = 0;
                     nextInterval = TimeSpan.FromSeconds(6);
                 }
@@ -213,15 +220,25 @@ public sealed partial class DevicesViewModel
                     token.ThrowIfCancellationRequested();
                     failures = Math.Min(failures + 1, 2);
                     nextInterval = TimeSpan.FromSeconds(failures == 1 ? 12 : 30);
-                    if (!_hasLoadedValues)
-                    {
-                        DetailError = DeviceErrorText.Describe(ex);
-                    }
+                    MarkDetailReadFailed(ex);
                 }
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
+        }
+    }
+
+    /// <summary>
+    /// The last detail read failed. Values already on screen stay there, but the failure is
+    /// announced and, when values are shown, called out as stale until a read succeeds again.
+    /// </summary>
+    private void MarkDetailReadFailed(Exception exception)
+    {
+        DetailError = DeviceErrorText.Describe(exception);
+        if (_hasDetailValues)
+        {
+            DetailStaleMessage = "上次读取失败，显示的是缓存结果";
         }
     }
 }

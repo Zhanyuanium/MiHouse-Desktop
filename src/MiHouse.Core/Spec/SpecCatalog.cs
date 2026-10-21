@@ -208,45 +208,58 @@ public sealed class SpecCatalog : ISpecCatalog
 
     private static Dictionary<string, string> ParseModelTypes(string json)
     {
-        List<SpecIndexEntryDto>? entries;
         try
         {
             using var document = JsonDocument.Parse(json);
             var root = document.RootElement;
-            entries = root.ValueKind switch
+            var entries = root.ValueKind switch
             {
-                JsonValueKind.Array => root.Deserialize<List<SpecIndexEntryDto>>(_serializerOptions),
+                JsonValueKind.Array => root.Deserialize<List<SpecIndexEntryDto?>>(_serializerOptions),
                 JsonValueKind.Object => root.Deserialize<SpecIndexDto>(_serializerOptions)?.Instances,
-                _ => throw new MiSpecException("The miot-spec instance index response has an unexpected shape."),
+                _ => throw new MiSpecException(
+                    "The miot-spec instance index response has an unexpected shape."),
             };
-        }
-        catch (JsonException ex)
-        {
-            throw new MiSpecException("The miot-spec instance index response is not valid JSON.", ex);
-        }
 
-        var best = new Dictionary<string, (string Type, int Version)>(StringComparer.OrdinalIgnoreCase);
-        foreach (var entry in entries ?? [])
-        {
-            if (string.IsNullOrEmpty(entry.Model) || string.IsNullOrEmpty(entry.Type))
+            if (entries is null)
             {
-                continue;
+                throw new MiSpecException(
+                    "The miot-spec instance index response does not contain an 'instances' array.");
             }
 
-            var version = entry.Version ?? 0;
-            if (!best.TryGetValue(entry.Model, out var current) || version > current.Version)
+            var best = new Dictionary<string, (string Type, int Version)>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in entries)
             {
-                best[entry.Model] = (entry.Type, version);
+                if (entry is null)
+                {
+                    throw new MiSpecException(
+                        "The miot-spec instance index response contains an empty entry.");
+                }
+
+                if (string.IsNullOrWhiteSpace(entry.Model) || string.IsNullOrWhiteSpace(entry.Type))
+                {
+                    throw new MiSpecException(
+                        "A miot-spec instance index entry is missing its 'model' or 'type'.");
+                }
+
+                var version = entry.Version ?? 0;
+                if (!best.TryGetValue(entry.Model, out var current) || version > current.Version)
+                {
+                    best[entry.Model] = (entry.Type, version);
+                }
             }
-        }
 
-        var modelTypes = new Dictionary<string, string>(best.Count, StringComparer.OrdinalIgnoreCase);
-        foreach (var (model, entry) in best)
+            var modelTypes = new Dictionary<string, string>(best.Count, StringComparer.OrdinalIgnoreCase);
+            foreach (var (model, entry) in best)
+            {
+                modelTypes[model] = entry.Type;
+            }
+
+            return modelTypes;
+        }
+        catch (Exception ex) when (IsStructuralFailure(ex))
         {
-            modelTypes[model] = entry.Type;
+            throw new MiSpecException("The miot-spec instance index response is malformed.", ex);
         }
-
-        return modelTypes;
     }
 
     private async Task<SpecInstance?> GetOrFetchSpecAsync(string urn, CancellationToken cancellationToken)
@@ -337,6 +350,15 @@ public sealed class SpecCatalog : ISpecCatalog
         }
     }
 
+    private static bool IsStructuralFailure(Exception exception)
+    {
+        return exception is JsonException
+            or NullReferenceException
+            or InvalidOperationException
+            or KeyNotFoundException
+            or NotSupportedException;
+    }
+
     private static bool IsNetworkFailure(Exception exception, CancellationToken cancellationToken)
     {
         return exception switch
@@ -366,16 +388,36 @@ public sealed class SpecCatalog : ISpecCatalog
             throw new MiSpecException($"The miot-spec definition for '{urn}' was empty.");
         }
 
-        var services = new List<SpecService>(dto.Services?.Count ?? 0);
-        foreach (var service in dto.Services ?? [])
+        if (string.IsNullOrWhiteSpace(dto.Type))
         {
-            services.Add(MapService(service));
+            throw new MiSpecException($"The miot-spec definition for '{urn}' is missing its 'type'.");
         }
 
-        return new SpecInstance(
-            string.IsNullOrEmpty(dto.Type) ? urn : dto.Type,
-            dto.Description ?? string.Empty,
-            services);
+        if (dto.Services is null)
+        {
+            throw new MiSpecException($"The miot-spec definition for '{urn}' is missing its 'services' array.");
+        }
+
+        try
+        {
+            var services = new List<SpecService>(dto.Services.Count);
+            foreach (var service in dto.Services)
+            {
+                if (service is null)
+                {
+                    throw new MiSpecException(
+                        $"The miot-spec definition for '{urn}' contains an empty service.");
+                }
+
+                services.Add(MapService(service));
+            }
+
+            return new SpecInstance(dto.Type, dto.Description ?? string.Empty, services);
+        }
+        catch (Exception ex) when (IsStructuralFailure(ex))
+        {
+            throw new MiSpecException($"The miot-spec definition for '{urn}' is malformed.", ex);
+        }
     }
 
     private static SpecService MapService(SpecServiceDto dto)
@@ -383,12 +425,22 @@ public sealed class SpecCatalog : ISpecCatalog
         var properties = new List<SpecProperty>(dto.Properties?.Count ?? 0);
         foreach (var property in dto.Properties ?? [])
         {
+            if (property is null)
+            {
+                throw new MiSpecException("A miot-spec service contains an empty property.");
+            }
+
             properties.Add(MapProperty(property, "property"));
         }
 
         var actions = new List<SpecAction>(dto.Actions?.Count ?? 0);
         foreach (var action in dto.Actions ?? [])
         {
+            if (action is null)
+            {
+                throw new MiSpecException("A miot-spec service contains an empty action.");
+            }
+
             actions.Add(MapAction(action, properties));
         }
 
@@ -449,11 +501,6 @@ public sealed class SpecCatalog : ISpecCatalog
     private static SpecProperty MapProperty(SpecPropertyDto dto, string kind)
     {
         var access = dto.Access ?? [];
-        IReadOnlyList<SpecValueList>? values = dto.ValueList is { Count: > 0 }
-            ? dto.ValueList.ConvertAll(value => new SpecValueList(
-                value.Value ?? throw new MiSpecException("A value-list entry of the miot-spec definition is missing 'value'."),
-                value.Description ?? string.Empty))
-            : null;
 
         return new SpecProperty(
             RequireIid(dto.Iid, kind),
@@ -463,9 +510,33 @@ public sealed class SpecCatalog : ISpecCatalog
             access.Exists(entry => string.Equals(entry, "read", StringComparison.OrdinalIgnoreCase)),
             access.Exists(entry => string.Equals(entry, "write", StringComparison.OrdinalIgnoreCase)),
             access.Exists(entry => string.Equals(entry, "notify", StringComparison.OrdinalIgnoreCase)),
-            values,
+            MapValueList(dto.ValueList),
             MapRange(dto.ValueRange),
             NormalizeComment(dto.Comment));
+    }
+
+    private static IReadOnlyList<SpecValueList>? MapValueList(List<SpecValueListDto?>? list)
+    {
+        if (list is null || list.Count == 0)
+        {
+            return null;
+        }
+
+        var values = new List<SpecValueList>(list.Count);
+        foreach (var value in list)
+        {
+            if (value is null)
+            {
+                throw new MiSpecException("A value-list entry of the miot-spec definition is empty.");
+            }
+
+            values.Add(new SpecValueList(
+                value.Value ?? throw new MiSpecException(
+                    "A value-list entry of the miot-spec definition is missing 'value'."),
+                value.Description ?? string.Empty));
+        }
+
+        return values;
     }
 
     private static SpecRange? MapRange(List<double>? range)

@@ -75,8 +75,10 @@ public sealed class SnapshotStoreTests : IDisposable
             null, null, "urn:miot-spec-v2:device:light:0000A001:test:1", "192.168.1.20");
         MiDevice child = new("child-1", "yeelink.light.color1", "Left lamp", null, false,
             "parent-1", 3, null, null);
+        MiDevice incomplete = new("incomplete-1", "yeelink.light.color1", "Broken channel", null, true,
+            IsSplitMetadataIncomplete: true);
 
-        store.SaveDevices(_userId, _home, [parent, child]);
+        store.SaveDevices(_userId, _home, [parent, child, incomplete]);
 
         Assert.True(store.TryLoadDevices(_userId, _home, out IReadOnlyList<MiDevice> devices));
         Assert.Collection(
@@ -88,7 +90,29 @@ public sealed class SnapshotStoreTests : IDisposable
                 Assert.Equal("parent-1", device.ParentDid);
                 Assert.Equal(3, device.ChannelSiid);
                 Assert.Equal("parent-1", device.ControlDid);
+            },
+            device =>
+            {
+                Assert.Equal(incomplete, device);
+                Assert.True(device.IsSplitMetadataIncomplete);
             });
+    }
+
+    [Fact]
+    public void TryLoadDevices_SnapshotWithoutSplitMarker_LoadsOrdinaryDevice()
+    {
+        var store = new SnapshotStore(_root);
+        WriteDevicesRaw(JsonSerializer.Serialize(new
+        {
+            Version = 1,
+            SavedAtUtc = DateTimeOffset.UtcNow,
+            Devices = new[] { new { Did = "did-1", Model = "model", Name = "Device", IsOnline = true } }
+        }));
+
+        Assert.True(store.TryLoadDevices(_userId, _home, out IReadOnlyList<MiDevice> devices));
+        MiDevice device = Assert.Single(devices);
+        Assert.False(device.IsSplitMetadataIncomplete);
+        Assert.False(device.IsSplitIncomplete);
     }
 
     [Fact]
