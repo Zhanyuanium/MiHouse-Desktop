@@ -53,6 +53,10 @@ winapp run src\MiHouse.App\MiHouse.App.csproj -c Release
 Use `--no-launch` to register without starting it, or `--unregister-on-exit` to clean up after
 the process exits.
 
+The package is registered with `appContainer` trust, and `winapp run` launches it as such; a
+registered package shows only `internetClient` and `privateNetworkClientServer` under the app's
+capabilities.
+
 ## Package (MSIX bundle)
 
 ```powershell
@@ -102,11 +106,15 @@ matches the manifest `Publisher` (`CN=AppPublisher`), or submit through the Micr
 
 ## Logs
 
-Crash reports are written to:
+Crash reports are written to the package state directory, which the system removes when the
+package is uninstalled:
 
 ```
-%LOCALAPPDATA%\MiHouse\logs\crash-yyyyMMdd-HHmmss.log
+%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalState\logs\crash-yyyyMMdd-HHmmss.log
 ```
+
+An unpackaged run has no package identity and writes to
+`%LOCALAPPDATA%\MiHouse-Unpackaged\logs` instead.
 
 Each report contains the timestamp, app informational version, source, handled flag, exception
 type, inner-exception type names and a reflection-built stack. Exception messages are never

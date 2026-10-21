@@ -55,10 +55,11 @@ winapp package src\MiHouse.App\MiHouse.App.csproj -c Release --arch x64 --arch a
 
 ## 数据与隐私
 
-- **会话。** `%LOCALAPPDATA%\MiHouse\session.dat`，内容为 JSON，使用 DPAPI（`DataProtectionScope.CurrentUser`）加密。退出登录会删除该文件；文件损坏时按未登录处理。
-- **缓存。** miot-spec 文档位于 `%LOCALAPPDATA%\MiHouse\cache\spec`，以 SHA-256 作为键；快速启动快照位于 `%LOCALAPPDATA%\MiHouse\cache\snapshots\<userId>`。
+- **会话。** `%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalState\session.dat`，内容为 JSON，使用 DPAPI（`DataProtectionScope.CurrentUser`）加密。退出登录会删除该文件；文件损坏时按未登录处理。
+- **缓存。** miot-spec 文档位于 `%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalCache\spec`，以 SHA-256 作为键；快速启动快照位于 `%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalCache\snapshots\<userId>`。所有持久化数据都位于包数据目录内，卸载包时随之删除。
 - **网络。** 登录访问 `account.xiaomi.com` 与 `sts.api.io.mi.com`；签名 API 请求访问 `api.io.mi.com` 或 `<region>.api.io.mi.com`；规格定义来自 `miot-spec.org`。局域网控制直接向设备发送 miIO UDP 包。未实现遥测或分析。
-- **崩溃日志。** `%LOCALAPPDATA%\MiHouse\logs\crash-*.log`，最多保留 20 份。字段为白名单：时间戳、应用版本、来源、异常类型、内部异常类型名、反射生成的调用栈，以及固定为 `<not recorded>` 的消息字段。
+- **权限。** 应用包只声明 `internetClient`（云端 HTTPS）与 `privateNetworkClientServer`（miIO UDP 局域网通信与本地 DNS）两项能力，不持有 `runFullTrust` 之类的广泛系统资源权限。
+- **崩溃日志。** `%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalState\logs\crash-*.log`，最多保留 20 份。字段为白名单：时间戳、应用版本、来源、异常类型、内部异常类型名、反射生成的调用栈，以及固定为 `<not recorded>` 的消息字段。
 
 ## 已知限制
 

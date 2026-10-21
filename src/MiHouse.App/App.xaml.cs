@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using MiHouse.App.Diagnostics;
 using MiHouse.App.Security;
+using MiHouse.App.Storage;
 using MiHouse.Core.Auth;
 using MiHouse.Core.Cloud;
 using MiHouse.Core.Devices;
@@ -23,6 +24,8 @@ public partial class App : Application
 
     public App()
     {
+        CrashLog.Initialize(AppStorage.Current.StatePath("logs"));
+
         UnhandledException += OnUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
@@ -85,8 +88,11 @@ public partial class App : Application
         services.AddKeyedSingleton("auth", (_, _) => CreateHttpClient(TimeSpan.FromSeconds(300)));
 
         services.AddSingleton<IAuthService>(provider =>
-            new MiHomeAuthService(provider.GetRequiredKeyedService<HttpClient>("auth")));
-        services.AddSingleton<ICredentialStore, DpapiCredentialStore>();
+            new MiHomeAuthService(
+                provider.GetRequiredKeyedService<HttpClient>("auth"),
+                AppStorage.Current.StateDirectory));
+        services.AddSingleton<ICredentialStore>(
+            _ => new DpapiCredentialStore(AppStorage.Current.StateDirectory));
         services.AddSingleton<IDeviceSecretStore, InMemoryDeviceSecretStore>();
         services.AddSingleton<ILanTransport, MiIoLanTransport>();
         services.AddSingleton<IMiHomeCloudClient>(provider =>
@@ -95,8 +101,11 @@ public partial class App : Application
                 nonceFactory: null,
                 provider.GetRequiredService<IDeviceSecretStore>()));
         services.AddSingleton<ISpecCatalog>(provider =>
-            new SpecCatalog(provider.GetRequiredService<HttpClient>(), new SpecDiskCache()));
-        services.AddSingleton(_ => new SnapshotStore());
+            new SpecCatalog(
+                provider.GetRequiredService<HttpClient>(),
+                new SpecDiskCache(AppStorage.Current.CachePath("spec"))));
+        services.AddSingleton(
+            _ => new SnapshotStore(AppStorage.Current.CachePath("snapshots")));
 
         services.AddSingleton<MainWindow>();
 

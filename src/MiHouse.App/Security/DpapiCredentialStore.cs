@@ -6,7 +6,7 @@ using MiHouse.Core.Session;
 namespace MiHouse.App.Security;
 
 /// <summary>
-/// Stores the Mi Home session in the current Windows user profile, protected with DPAPI.
+/// Stores the Mi Home session in the package state directory, protected with DPAPI.
 /// </summary>
 public sealed class DpapiCredentialStore : ICredentialStore
 {
@@ -19,12 +19,12 @@ public sealed class DpapiCredentialStore : ICredentialStore
     /// <summary>
     /// Initializes a new instance of the <see cref="DpapiCredentialStore"/> class.
     /// </summary>
-    public DpapiCredentialStore()
+    /// <param name="stateDirectory">Directory that holds the protected session file.</param>
+    public DpapiCredentialStore(string stateDirectory)
     {
-        _directory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "MiHouse");
-        _path = Path.Combine(_directory, "session.dat");
+        ArgumentException.ThrowIfNullOrWhiteSpace(stateDirectory);
+        _directory = stateDirectory;
+        _path = Path.Combine(stateDirectory, "session.dat");
     }
 
     /// <inheritdoc />

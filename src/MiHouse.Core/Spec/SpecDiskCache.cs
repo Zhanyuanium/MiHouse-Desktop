@@ -12,14 +12,6 @@ public sealed class SpecDiskCache
     private readonly string _directory;
 
     /// <summary>
-    /// Creates a cache in the application's local cache directory.
-    /// </summary>
-    public SpecDiskCache()
-        : this(GetDefaultDirectory())
-    {
-    }
-
-    /// <summary>
     /// Creates a cache rooted at <paramref name="directory"/>.
     /// </summary>
     public SpecDiskCache(string directory)
@@ -75,15 +67,6 @@ public sealed class SpecDiskCache
                 TryDelete(tempPath);
             }
         }
-    }
-
-    private static string GetDefaultDirectory()
-    {
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "MiHouse",
-            "cache",
-            "spec");
     }
 
     private static void TryDelete(string path)

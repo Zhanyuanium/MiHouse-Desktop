@@ -23,11 +23,39 @@ headless host. The DPAPI implementation of `ICredentialStore` lives in `MiHouse.
 ## Caching and storage
 
 There is no database. `SpecCatalog` keeps parsed specs in memory, and `SpecDiskCache` writes raw
-miot-spec JSON under `%LOCALAPPDATA%\MiHouse\cache\spec`, keyed by SHA-256. The instance index is
-treated as fresh for 24 hours, and stale data is used when the network fails.
+miot-spec JSON under `<LocalCache>\spec`, keyed by SHA-256. The instance index is treated as fresh
+for 24 hours, and stale data is used when the network fails.
 
 `SnapshotStore` keeps 30-day structural snapshots of homes, devices and scenes under
-`%LOCALAPPDATA%\MiHouse\cache\snapshots\<userId>`. Snapshots never restore property values.
+`<LocalCache>\snapshots\<userId>`. Snapshots never restore property values.
+
+All persisted state lives inside the MSIX package data folders, so uninstalling the package
+removes it:
+
+```
+%LOCALAPPDATA%\Packages\<PackageFamilyName>\
+    LocalState\        session.dat, device-id, logs\crash-*.log
+    LocalCache\        spec\, snapshots\<userId>\
+```
+
+`MiHouse.App.Storage.AppStorage` resolves those two directories once from
+`ApplicationData.Current.LocalFolder` and `LocalCacheFolder`. `MiHouse.Core` never resolves paths
+itself: every component that persists something takes an explicit directory, so a component
+cannot fall back to a location outside the package. Only an unpackaged development run (no
+package identity, so `ApplicationData.Current` throws) falls back to
+`%LOCALAPPDATA%\MiHouse-Unpackaged`.
+
+## Trust and capabilities
+
+`Package.appxmanifest` declares `uap10:TrustLevel="appContainer"` with
+`uap10:RuntimeBehavior="packagedClassicApp"` and the literal entry point
+`Windows.PartialTrustApplication`; the `$targetentrypoint$` token expands to
+`Windows.FullTrustApplication`, which the validator rejects for this configuration. The capability
+list is exactly two entries: `internetClient` for cloud HTTPS, and `privateNetworkClientServer` for
+miIO UDP to LAN devices and local DNS. The package does not declare `runFullTrust`.
+
+LAN traffic is outbound UDP only; the app opens no listening socket, so no inbound firewall rule is
+involved.
 
 ## Auth
 
@@ -46,6 +74,9 @@ thrown; those accounts must use QR login. A successful login yields a `MiHomeSes
 | `Microsoft.Extensions.DependencyInjection` + `Logging` | Explicit composition, no `Generic Host` ceremony. |
 | Hand-written RC4 | Not in `System.Security.Cryptography`; small and covered by known-answer tests. |
 | DPAPI for tokens | Tokens never leave the user profile in plaintext. |
+| MSIX `appContainer` trust (no `runFullTrust`) | The package is a `packagedClassicApp` with `uap10:TrustLevel="appContainer"`, so Windows shows only the two network capabilities it really uses; `runFullTrust` (rendered as "uses all system resources") is dropped. |
+| Package data folders for persistence | `AppStorage` resolves `LocalFolder` and `LocalCacheFolder`; nothing is written outside the package, so uninstall removes all app data. |
+| DPAPI in the AppContainer | `ProtectedData` with `DataProtectionScope.CurrentUser` was verified to round-trip inside the AppContainer; no WinRT credential API is needed. |
 
 ## Scope
 

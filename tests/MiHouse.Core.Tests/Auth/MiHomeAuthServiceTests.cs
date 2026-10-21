@@ -54,9 +54,6 @@ public sealed class MiHomeAuthServiceTests : IDisposable
     public async Task PasswordLoginUsesInjectedDeviceIdentityPath()
     {
         var deviceIdPath = Path.Combine(_tempDirectory, "device-id");
-        var defaultPath = DeviceIdentity.DefaultFilePath();
-        var defaultExisted = File.Exists(defaultPath);
-        var defaultLastWrite = defaultExisted ? File.GetLastWriteTimeUtc(defaultPath) : default;
 
         var handler = new StubHttpMessageHandler(request =>
         {
@@ -95,12 +92,6 @@ public sealed class MiHomeAuthServiceTests : IDisposable
             request => request.Uri.AbsolutePath == "/pass/serviceLogin");
         Assert.True(serviceLogin.Headers.TryGetValue("Cookie", out var cookie));
         Assert.Contains($"deviceId={deviceId}", cookie);
-
-        Assert.Equal(defaultExisted, File.Exists(defaultPath));
-        if (defaultExisted)
-        {
-            Assert.Equal(defaultLastWrite, File.GetLastWriteTimeUtc(defaultPath));
-        }
     }
 
     [Fact]

@@ -18,14 +18,6 @@ public sealed class SnapshotStore
     private readonly string _root;
 
     /// <summary>
-    /// Creates a store in the application's local cache directory.
-    /// </summary>
-    public SnapshotStore()
-        : this(GetDefaultRoot())
-    {
-    }
-
-    /// <summary>
     /// Creates a store rooted at <paramref name="rootDirectory"/>; each user gets a subdirectory.
     /// </summary>
     public SnapshotStore(string rootDirectory)
@@ -138,15 +130,6 @@ public sealed class SnapshotStore
     private static bool IsUsable(IReadOnlyList<MiScene> scenes)
     {
         return scenes.All(scene => scene is not null && !string.IsNullOrEmpty(scene.Id));
-    }
-
-    private static string GetDefaultRoot()
-    {
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "MiHouse",
-            "cache",
-            "snapshots");
     }
 
     private static string GetDevicesFileName(MiHome home)

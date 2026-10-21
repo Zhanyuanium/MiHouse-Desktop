@@ -5,8 +5,8 @@ using System.Text;
 namespace MiHouse.App.Diagnostics;
 
 /// <summary>
-/// Writes bounded crash reports under <c>%LOCALAPPDATA%\MiHouse\logs</c>. Logging must never
-/// throw.
+/// Writes bounded crash reports under the directory supplied by <see cref="Initialize"/> (the
+/// package state directory's logs folder). Logging must never throw.
 /// </summary>
 /// <remarks>
 /// Content policy: only whitelisted fields are persisted. Exception messages are never recorded,
@@ -18,24 +18,33 @@ internal static class CrashLog
     private const int _keepFiles = 20;
     private const string _messageNotRecorded = "<not recorded>";
 
-    private static readonly string _directory = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "MiHouse",
-        "logs");
+    private static string? _directory;
 
     /// <summary>
-    /// Gets the directory crash reports are written to.
+    /// Sets the directory crash reports are written to. Until this is called <see cref="Write"/>
+    /// and <see cref="Prune"/> do nothing.
     /// </summary>
-    public static string DirectoryPath => _directory;
+    /// <param name="directory">Directory that holds the crash reports.</param>
+    public static void Initialize(string directory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+        _directory = directory;
+    }
 
     /// <summary>
     /// Writes one crash report and prunes old reports. A failure while logging is ignored.
     /// </summary>
     public static void Write(string source, bool handled, Exception? exception)
     {
+        var directory = _directory;
+        if (directory is null)
+        {
+            return;
+        }
+
         try
         {
-            Directory.CreateDirectory(_directory);
+            Directory.CreateDirectory(directory);
 
             var content = new StringBuilder()
                 .AppendLine($"Timestamp: {DateTimeOffset.Now:O}")
@@ -50,7 +59,7 @@ internal static class CrashLog
                 .ToString();
 
             string path;
-            using (var stream = CreateLogFile(out path))
+            using (var stream = CreateLogFile(directory, out path))
             using (var writer = new StreamWriter(
                 stream,
                 new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)))
@@ -72,16 +81,22 @@ internal static class CrashLog
     /// </summary>
     public static void Prune(string? newestFile = null)
     {
+        var directory = _directory;
+        if (directory is null)
+        {
+            return;
+        }
+
         try
         {
-            if (!Directory.Exists(_directory))
+            if (!Directory.Exists(directory))
             {
                 return;
             }
 
             var protectedPath = newestFile is null ? null : Path.GetFullPath(newestFile);
             var files = Directory
-                .EnumerateFiles(_directory, "crash-*.log")
+                .EnumerateFiles(directory, "crash-*.log")
                 .Select(path => new FileInfo(path))
                 .OrderByDescending(file => file.LastWriteTimeUtc)
                 .ThenByDescending(file => file.Name, StringComparer.Ordinal)
@@ -115,7 +130,7 @@ internal static class CrashLog
         }
     }
 
-    private static FileStream CreateLogFile(out string path)
+    private static FileStream CreateLogFile(string directory, out string path)
     {
         var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
 
@@ -124,7 +139,7 @@ internal static class CrashLog
             var name = attempt == 0
                 ? $"crash-{stamp}.log"
                 : $"crash-{stamp}-{attempt + 1}.log";
-            path = Path.Combine(_directory, name);
+            path = Path.Combine(directory, name);
 
             try
             {

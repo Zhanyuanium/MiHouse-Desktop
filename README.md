@@ -55,10 +55,11 @@ winapp package src\MiHouse.App\MiHouse.App.csproj -c Release --arch x64 --arch a
 
 ## Data and privacy
 
-- **Session.** `%LOCALAPPDATA%\MiHouse\session.dat`, a JSON payload encrypted with DPAPI (`DataProtectionScope.CurrentUser`). Signing out deletes it; a corrupt file is treated as signed out.
-- **Caches.** miot-spec documents live in `%LOCALAPPDATA%\MiHouse\cache\spec`, keyed by SHA-256. Warm-start snapshots live in `%LOCALAPPDATA%\MiHouse\cache\snapshots\<userId>`.
+- **Session.** `%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalState\session.dat`, a JSON payload encrypted with DPAPI (`DataProtectionScope.CurrentUser`). Signing out deletes it; a corrupt file is treated as signed out.
+- **Caches.** miot-spec documents live in `%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalCache\spec`, keyed by SHA-256. Warm-start snapshots live in `%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalCache\snapshots\<userId>`. All persisted data stays inside the package data folders, so uninstalling the package removes it.
 - **Network.** Sign-in talks to `account.xiaomi.com` and `sts.api.io.mi.com`; signed API calls go to `api.io.mi.com` or `<region>.api.io.mi.com`; spec definitions come from `miot-spec.org`. LAN control sends miIO UDP packets directly to the device. No telemetry or analytics is implemented.
-- **Crash logs.** `%LOCALAPPDATA%\MiHouse\logs\crash-*.log`, newest 20 kept. The format is a whitelist: timestamp, app version, source, exception type, inner-exception type names, a reflection-built stack, and `<not recorded>` in place of any message.
+- **Capabilities.** The package declares only `internetClient` (cloud HTTPS) and `privateNetworkClientServer` (miIO UDP to LAN devices and local DNS). It holds no broad system-resource permission such as `runFullTrust`.
+- **Crash logs.** `%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalState\logs\crash-*.log`, newest 20 kept. The format is a whitelist: timestamp, app version, source, exception type, inner-exception type names, a reflection-built stack, and `<not recorded>` in place of any message.
 
 ## Known limitations
 

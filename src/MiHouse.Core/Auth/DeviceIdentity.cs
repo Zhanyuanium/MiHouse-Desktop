@@ -16,14 +16,6 @@ internal sealed class DeviceIdentity
     private string? _value;
 
     /// <summary>
-    /// Initializes a new instance that stores the id in the current Windows user profile.
-    /// </summary>
-    internal DeviceIdentity()
-        : this(DefaultFilePath())
-    {
-    }
-
-    /// <summary>
     /// Initializes a new instance that stores the id at <paramref name="filePath"/>.
     /// </summary>
     /// <param name="filePath">File that holds the id.</param>
@@ -32,14 +24,6 @@ internal sealed class DeviceIdentity
         ArgumentException.ThrowIfNullOrEmpty(filePath);
         _filePath = filePath;
     }
-
-    /// <summary>
-    /// Gets the default location of the device id file.
-    /// </summary>
-    internal static string DefaultFilePath() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "MiHouse",
-        "device-id");
 
     /// <summary>
     /// Returns the persisted device id, creating it on first use.

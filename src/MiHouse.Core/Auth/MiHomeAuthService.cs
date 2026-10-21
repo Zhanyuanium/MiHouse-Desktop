@@ -32,8 +32,9 @@ public sealed class MiHomeAuthService : IAuthService
     /// Initializes a new instance of the <see cref="MiHomeAuthService"/> class.
     /// </summary>
     /// <param name="httpClient">Client used for all account and STS requests.</param>
-    public MiHomeAuthService(HttpClient httpClient)
-        : this(httpClient, new DeviceIdentity())
+    /// <param name="stateDirectory">Directory that holds the persisted device identity.</param>
+    public MiHomeAuthService(HttpClient httpClient, string stateDirectory)
+        : this(httpClient, new DeviceIdentity(GetIdentityPath(stateDirectory)))
     {
     }
 
@@ -176,6 +177,12 @@ public sealed class MiHomeAuthService : IAuthService
         }
 
         return await CompleteLoginAsync(result, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static string GetIdentityPath(string stateDirectory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(stateDirectory);
+        return Path.Combine(stateDirectory, "device-id");
     }
 
     private static MiAuthException CreateRejectedException(JsonElement result)
