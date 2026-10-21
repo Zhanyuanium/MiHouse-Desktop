@@ -63,7 +63,7 @@ This publishes the Release x64 and ARM64 slices, creates a self-signed developme
 certificate, signs the bundle and writes it plus the certificate into the current directory:
 
 ```
-E7E58AE2-FE69-4041-B3CB-BF61B9EC1A47_0.1.0.0_arm64_x64.msixbundle
+E7E58AE2-FE69-4041-B3CB-BF61B9EC1A47_0.1.1.0_arm64_x64.msixbundle
 E7E58AE2-FE69-4041-B3CB-BF61B9EC1A47_cert.pfx
 ```
 
@@ -94,7 +94,7 @@ bundle, distribute only the public `.cer`, never the PFX or its password.
 Then install the bundle:
 
 ```powershell
-Add-AppxPackage .\E7E58AE2-FE69-4041-B3CB-BF61B9EC1A47_0.1.0.0_arm64_x64.msixbundle
+Add-AppxPackage .\E7E58AE2-FE69-4041-B3CB-BF61B9EC1A47_0.1.1.0_arm64_x64.msixbundle
 ```
 
 For a future production release, sign with a certificate from a trusted CA whose subject
