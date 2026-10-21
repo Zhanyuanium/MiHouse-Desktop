@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MiHouse.Core.Devices;
@@ -12,6 +13,8 @@ public sealed partial class ScenesViewModel : ObservableObject
 {
     private readonly IMiHomeCloudClient _cloud;
     private readonly MiHomeSession _session;
+    private readonly SnapshotStore _snapshots;
+    private readonly long? _userId;
     private readonly Func<SceneRowViewModel, CancellationToken, Task<bool>> _confirm;
     private readonly Dictionary<string, SceneRowViewModel> _rowsById = new(StringComparer.Ordinal);
     private MiHome? _home;
@@ -36,11 +39,15 @@ public sealed partial class ScenesViewModel : ObservableObject
     public partial string? Notice { get; set; }
 
     public ScenesViewModel(IMiHomeCloudClient cloud, MiHomeSession session,
-        Func<SceneRowViewModel, CancellationToken, Task<bool>> confirm)
+        Func<SceneRowViewModel, CancellationToken, Task<bool>> confirm, SnapshotStore snapshots)
     {
         _cloud = cloud;
         _session = session;
         _confirm = confirm;
+        _snapshots = snapshots;
+        _userId = long.TryParse(session.UserId, NumberStyles.None, CultureInfo.InvariantCulture, out long userId)
+            ? userId
+            : null;
     }
 
     public ObservableCollection<SceneRowViewModel> Scenes { get; } = [];
@@ -80,6 +87,40 @@ public sealed partial class ScenesViewModel : ObservableObject
         Notice = null;
         OnPropertyChanged(nameof(HomeName));
         NotifyRunStateChanged();
+
+        if (home is not null)
+        {
+            PublishCachedScenes(home);
+        }
+    }
+
+    /// <summary>
+    /// Publishes the scenes stored at the end of the last successful refresh of
+    /// <paramref name="home"/> so switching homes keeps the scene cards on screen until the
+    /// request answers. Execution still goes to the cloud.
+    /// </summary>
+    private void PublishCachedScenes(MiHome home)
+    {
+        if (_homeLifetime is not { } lifetime || _userId is not { } userId ||
+            !_snapshots.TryLoadScenes(userId, home, out IReadOnlyList<MiScene> scenes))
+        {
+            return;
+        }
+
+        foreach (MiScene scene in scenes.DistinctBy(scene => scene.Id))
+        {
+            if (_rowsById.ContainsKey(scene.Id))
+            {
+                continue;
+            }
+
+            var row = new SceneRowViewModel(_cloud, _session, home, scene, lifetime.Token, _confirm, ShowNotice);
+            row.PropertyChanged += OnScenePropertyChanged;
+            _rowsById.Add(scene.Id, row);
+            Scenes.Add(row);
+        }
+
+        IsEmpty = Scenes.Count == 0;
     }
 
     [RelayCommand(AllowConcurrentExecutions = true)]
@@ -121,6 +162,11 @@ public sealed partial class ScenesViewModel : ObservableObject
         {
             IReadOnlyList<MiScene> scenes = await _cloud.GetScenesAsync(_session, home, token);
             token.ThrowIfCancellationRequested();
+            if (_userId is { } userId)
+            {
+                _snapshots.SaveScenes(userId, home, scenes);
+            }
+
             var merged = new List<SceneRowViewModel>();
             foreach (MiScene scene in scenes.DistinctBy(scene => scene.Id))
             {

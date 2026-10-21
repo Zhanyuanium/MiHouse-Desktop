@@ -26,9 +26,11 @@ public sealed partial class MainWindow : Window
     private readonly ISpecCatalog _specs;
     private readonly IDeviceSecretStore _secrets;
     private readonly ILanTransport _lan;
+    private readonly SnapshotStore _snapshots;
 
     public MainWindow(ILogger<MainWindow> logger, IAuthService auth, ICredentialStore credentials,
-        IMiHomeCloudClient cloud, ISpecCatalog specs, IDeviceSecretStore secrets, ILanTransport lan)
+        IMiHomeCloudClient cloud, ISpecCatalog specs, IDeviceSecretStore secrets, ILanTransport lan,
+        SnapshotStore snapshots)
     {
         _auth = auth;
         _credentials = credentials;
@@ -36,6 +38,7 @@ public sealed partial class MainWindow : Window
         _specs = specs;
         _secrets = secrets;
         _lan = lan;
+        _snapshots = snapshots;
         InitializeComponent();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(WindowTitleBar);
@@ -96,7 +99,7 @@ public sealed partial class MainWindow : Window
     {
         StopCurrentPage();
         var controller = new DeviceController(_cloud, _specs, session, _lan, _secrets);
-        var viewModel = new DevicesViewModel(_cloud, controller, _credentials, session);
+        var viewModel = new DevicesViewModel(_cloud, controller, _credentials, session, _snapshots);
         WindowTitleBar.DataContext = viewModel;
         HomeSwitcher.Visibility = Visibility.Visible;
         viewModel.SignedOut += ShowLogin;

@@ -7,9 +7,23 @@ public sealed partial class DevicesViewModel
 {
     private readonly Dictionary<string, DeviceRowViewModel> _deviceRows = new(StringComparer.Ordinal);
     private CancellationTokenSource? _homeLifetime;
+    private bool _observesEnvironmentReadings;
+    public bool AreReadingsLoading => !HasSensorReadings && _deviceRows.Values.Any(row => !row.IsRemoved && row.IsLoading);
+    public bool HasNoSensorReadings => !HasSensorReadings && !AreReadingsLoading;
 
-    private DeviceRowViewModel[] MergeDevices(IReadOnlyList<MiDevice> devices)
+    private void NotifyEnvironmentReadingsState()
     {
+        OnPropertyChanged(nameof(AreReadingsLoading));
+        OnPropertyChanged(nameof(HasNoSensorReadings));
+    }
+
+    private DeviceRowViewModel[] MergeDevices(IReadOnlyList<MiDevice> devices, bool isLoading = false)
+    {
+        if (!_observesEnvironmentReadings)
+        {
+            SensorReadings.CollectionChanged += (_, _) => NotifyEnvironmentReadingsState();
+            _observesEnvironmentReadings = true;
+        }
         _homeLifetime ??= new CancellationTokenSource();
         var present = new HashSet<string>(StringComparer.Ordinal);
         foreach (MiDevice device in devices)
@@ -21,7 +35,7 @@ public sealed partial class DevicesViewModel
             }
             else
             {
-                row = new DeviceRowViewModel(device, _controller, _homeLifetime.Token);
+                row = new DeviceRowViewModel(device, _controller, _homeLifetime.Token, isLoading);
                 row.PropertyChanged += OnDeviceOperationChanged;
                 _deviceRows.Add(device.Did, row);
             }
@@ -37,6 +51,7 @@ public sealed partial class DevicesViewModel
             }
         }
 
+        NotifyEnvironmentReadingsState();
         return _deviceRows.Values.ToArray();
     }
 
@@ -44,6 +59,10 @@ public sealed partial class DevicesViewModel
     {
         if (sender is DeviceRowViewModel device)
         {
+            if (e.PropertyName is nameof(DeviceRowViewModel.IsLoading) or nameof(DeviceRowViewModel.IsRemoved))
+            {
+                NotifyEnvironmentReadingsState();
+            }
             if (e.PropertyName == nameof(DeviceRowViewModel.IsRemoved) && ReferenceEquals(SelectedDevice, device))
             {
                 DetailMessage = device.IsRemoved ? "设备已从当前家庭移除" : null;
@@ -88,6 +107,7 @@ public sealed partial class DevicesViewModel
         OnPropertyChanged(nameof(IsRoomEmpty));
         OnPropertyChanged(nameof(IsRoomFailed));
         OnPropertyChanged(nameof(HasRefreshFailure));
+        NotifyEnvironmentReadingsState();
     }
 
     private void ResetDeviceOperations()
@@ -102,5 +122,6 @@ public sealed partial class DevicesViewModel
         _homeLifetime?.Cancel();
         _homeLifetime?.Dispose();
         _homeLifetime = null;
+        NotifyEnvironmentReadingsState();
     }
 }

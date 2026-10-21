@@ -23,12 +23,13 @@ public sealed partial class DeviceRowViewModel : ObservableObject
     private bool _hasLoadedValues;
     private Task? _initialization;
 
-    public DeviceRowViewModel(MiDevice device, IDeviceController controller, CancellationToken homeToken)
+    public DeviceRowViewModel(MiDevice device, IDeviceController controller, CancellationToken homeToken, bool isLoading = false)
     {
         _device = device;
         _controller = controller;
         _operationLifetime = CancellationTokenSource.CreateLinkedTokenSource(homeToken);
         _token = _operationLifetime.Token;
+        IsLoading = isLoading;
     }
 
     public MiDevice Device => _device;

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MiHouse.Core.Auth;
@@ -9,9 +10,33 @@ using MiHouse.Core.Spec;
 namespace MiHouse.App.ViewModels;
 
 [Microsoft.UI.Xaml.Data.Bindable]
-public sealed partial class HomeRowViewModel(MiHome home)
+public sealed partial class HomeRowViewModel : ObservableObject
 {
-    public MiHome Home { get; } = home;
+    private MiHome _home;
+
+    public HomeRowViewModel(MiHome home)
+    {
+        _home = home;
+    }
+
+    public MiHome Home
+    {
+        get => _home;
+        set
+        {
+            if (Equals(_home, value))
+            {
+                return;
+            }
+
+            _home = value;
+            OnPropertyChanged(nameof(Home));
+            OnPropertyChanged(nameof(Name));
+            OnPropertyChanged(nameof(IsShared));
+            OnPropertyChanged(nameof(AccessibleName));
+        }
+    }
+
     public string Name => Home.Name;
     public bool IsShared => Home.IsShared;
     public string AccessibleName => IsShared ? $"{Name}，共享" : Name;
@@ -45,6 +70,8 @@ public sealed partial class DevicesViewModel : ObservableObject
     private readonly IDeviceController _controller;
     private readonly ICredentialStore _credentials;
     private readonly MiHomeSession _session;
+    private readonly SnapshotStore _snapshots;
+    private readonly long? _userId;
     private CancellationTokenSource? _listLifetime;
     private CancellationTokenSource? _selectionLifetime;
     private bool _isUpdatingHomes;
@@ -85,13 +112,18 @@ public sealed partial class DevicesViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasSelection))]
     public partial DeviceRowViewModel? SelectedDevice { get; set; }
 
-    public DevicesViewModel(IMiHomeCloudClient cloud, IDeviceController controller, ICredentialStore credentials, MiHomeSession session)
+    public DevicesViewModel(IMiHomeCloudClient cloud, IDeviceController controller, ICredentialStore credentials,
+        MiHomeSession session, SnapshotStore snapshots)
     {
         _cloud = cloud;
         _controller = controller;
         _credentials = credentials;
         _session = session;
-        ScenePanel = new ScenesViewModel(cloud, session, RequestSceneConfirmationAsync);
+        _snapshots = snapshots;
+        _userId = long.TryParse(session.UserId, NumberStyles.None, CultureInfo.InvariantCulture, out long userId)
+            ? userId
+            : null;
+        ScenePanel = new ScenesViewModel(cloud, session, RequestSceneConfirmationAsync, snapshots);
         ScenePanel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(ScenesViewModel.IsBusy))
@@ -139,30 +171,51 @@ public sealed partial class DevicesViewModel : ObservableObject
         string? previousRoom = ActiveRoom?.Name;
         try
         {
-            if (SelectedHome is null)
+            // The first load primes homes and the selected home's devices; a later home switch
+            // primes that home only when the session has not loaded it yet.
+            bool restoredHomes = false;
+            if (Homes.Count == 0)
+            {
+                restoredHomes = RestoreSnapshot();
+            }
+
+            if (SelectedHome is null || restoredHomes)
             {
                 // Initial selection belongs to this load, not a second device request.
                 _isUpdatingHomes = true;
+                IReadOnlyList<MiHome>? fetchedHomes = null;
                 try
                 {
+                    fetchedHomes = await _cloud.GetHomesAsync(_session, token);
+                    token.ThrowIfCancellationRequested();
+
                     if (Homes.Count == 0)
                     {
-                        IReadOnlyList<MiHome> homes = await _cloud.GetHomesAsync(_session, token);
-                        token.ThrowIfCancellationRequested();
-                        foreach (MiHome home in homes)
+                        foreach (MiHome home in fetchedHomes)
                         {
                             Homes.Add(new HomeRowViewModel(home));
                         }
-
-                        OnPropertyChanged(nameof(HasHomes));
+                    }
+                    else
+                    {
+                        ReconcileHomes(fetchedHomes);
                     }
 
-                    SelectedHome = Homes.FirstOrDefault(home => home.Home.Rooms.Any(room => room.DeviceIds.Count > 0))
-                        ?? Homes.FirstOrDefault();
+                    OnPropertyChanged(nameof(HasHomes));
+                    if (SelectedHome is null)
+                    {
+                        SelectedHome = SelectFallbackHome();
+                    }
                 }
                 finally
                 {
                     _isUpdatingHomes = false;
+                }
+
+                // A successful refresh always replaces the stored list and selection.
+                if (fetchedHomes is not null && _userId is { } userId)
+                {
+                    _snapshots.SaveHomes(userId, fetchedHomes, GetSelectedHomeId(SelectedHome));
                 }
             }
 
@@ -173,6 +226,13 @@ public sealed partial class DevicesViewModel : ObservableObject
                 return;
             }
 
+            // A home the session has not loaded yet paints its cached structure before the
+            // request; its rows stay marked as loading so nothing is written from cache data.
+            if (!restoredHomes && _userId is { } cachedUserId)
+            {
+                RestoreHomeDevices(cachedUserId, selectedHome);
+            }
+
             IReadOnlyList<MiDevice> devices = await _cloud.GetDevicesAsync(_session, selectedHome.Home, token);
             token.ThrowIfCancellationRequested();
             DeviceRowViewModel[] rows = MergeDevices(devices);
@@ -180,6 +240,11 @@ public sealed partial class DevicesViewModel : ObservableObject
 
             IsEmpty = rows.Length == 0;
             SetDeviceClasses(rows);
+
+            if (_userId is { } cacheUserId)
+            {
+                _snapshots.SaveDevices(cacheUserId, selectedHome.Home, devices);
+            }
 
             if (CurrentPage == ShellPageKind.Room)
             {
@@ -243,6 +308,140 @@ public sealed partial class DevicesViewModel : ObservableObject
             }
         }
     }
+
+    /// <summary>
+    /// Publishes the structure from the last successful refresh so the dashboard has
+    /// content before the network answers. Values are never restored from the cache.
+    /// </summary>
+    private bool RestoreSnapshot()
+    {
+        if (_userId is not { } userId ||
+            !_snapshots.TryLoadHomes(userId, out IReadOnlyList<MiHome> homes, out long? selectedHomeId))
+        {
+            return false;
+        }
+
+        _isUpdatingHomes = true;
+        try
+        {
+            foreach (MiHome home in homes)
+            {
+                Homes.Add(new HomeRowViewModel(home));
+            }
+
+            OnPropertyChanged(nameof(HasHomes));
+            SelectedHome = (selectedHomeId is { } id
+                ? Homes.FirstOrDefault(row => long.TryParse(row.Home.Id, NumberStyles.Integer,
+                    CultureInfo.InvariantCulture, out long homeId) && homeId == id)
+                : null)
+                ?? SelectFallbackHome();
+        }
+        finally
+        {
+            _isUpdatingHomes = false;
+        }
+
+        if (SelectedHome is { } selected)
+        {
+            RestoreHomeDevices(userId, selected);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Publishes the structure of <paramref name="home"/> before its request: from the live
+    /// rows when the session already holds the home's devices, otherwise from the cached
+    /// snapshot. Only the home's own rows feed rooms and class groups, keeping a previous home
+    /// out of the new home's groups; cached rows keep
+    /// <see cref="DeviceRowViewModel.IsLoading"/> set, so cached data is never used for writes.
+    /// </summary>
+    private void RestoreHomeDevices(long userId, HomeRowViewModel home)
+    {
+        if (!_snapshots.TryLoadDevices(userId, home.Home, out IReadOnlyList<MiDevice> devices))
+        {
+            return;
+        }
+
+        var ids = new HashSet<string>(devices.Select(device => device.Did), StringComparer.Ordinal);
+        DeviceRowViewModel[] rows;
+        if (ids.Count > 0 && ids.All(_deviceRows.ContainsKey))
+        {
+            // The home is already in memory: rebuild the view from the live rows so the older
+            // snapshot never overwrites fresher device data.
+            rows = _deviceRows.Values.Where(row => ids.Contains(row.Device.Did)).ToArray();
+        }
+        else
+        {
+            rows = MergeDevices(devices, isLoading: true)
+                .Where(row => ids.Contains(row.Device.Did))
+                .ToArray();
+        }
+
+        SyncRooms(home, rows);
+        IsEmpty = rows.Length == 0;
+        SetDeviceClasses(rows);
+    }
+
+    /// <summary>
+    /// Updates the cached home rows in place from a successful refresh, keeping the
+    /// instance the home switcher has selected.
+    /// </summary>
+    private void ReconcileHomes(IReadOnlyList<MiHome> homes)
+    {
+        var existing = new Dictionary<string, HomeRowViewModel>(StringComparer.Ordinal);
+        foreach (HomeRowViewModel row in Homes)
+        {
+            existing[row.Home.Id] = row;
+        }
+
+        var next = new List<HomeRowViewModel>(homes.Count);
+        foreach (MiHome home in homes)
+        {
+            if (existing.Remove(home.Id, out HomeRowViewModel? row))
+            {
+                row.Home = home;
+            }
+            else
+            {
+                row = new HomeRowViewModel(home);
+            }
+
+            next.Add(row);
+        }
+
+        HomeRowViewModel? selected = SelectedHome;
+        bool keepSelection = selected is not null && next.Contains(selected);
+        if (!keepSelection)
+        {
+            // Clear before the collection changes so the switcher cannot select twice.
+            SelectedHome = null;
+        }
+
+        SyncItems(Homes, next);
+
+        if (!keepSelection)
+        {
+            SelectedHome = SelectFallbackHome();
+        }
+    }
+
+    private HomeRowViewModel? SelectFallbackHome() =>
+        Homes.FirstOrDefault(home => home.Home.Rooms.Any(room => room.DeviceIds.Count > 0))
+        ?? Homes.FirstOrDefault();
+
+    private void PersistSelectedHome(HomeRowViewModel? home)
+    {
+        if (home is null || _userId is not { } userId)
+        {
+            return;
+        }
+
+        _snapshots.SaveHomes(userId, Homes.Select(row => row.Home).ToArray(), GetSelectedHomeId(home));
+    }
+
+    private static long? GetSelectedHomeId(HomeRowViewModel? home) =>
+        long.TryParse(home?.Home.Id, NumberStyles.Integer, CultureInfo.InvariantCulture, out long id) ? id : null;
 
     private void SyncRooms(HomeRowViewModel home, DeviceRowViewModel[] rows)
     {
@@ -457,6 +656,7 @@ public sealed partial class DevicesViewModel : ObservableObject
         if (!_isUpdatingHomes)
         {
             _listLifetime?.Cancel();
+            PersistSelectedHome(value);
         }
 
         ScenePanel.SetHome(value?.Home);

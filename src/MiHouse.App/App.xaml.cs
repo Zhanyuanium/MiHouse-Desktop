@@ -96,6 +96,7 @@ public partial class App : Application
                 provider.GetRequiredService<IDeviceSecretStore>()));
         services.AddSingleton<ISpecCatalog>(provider =>
             new SpecCatalog(provider.GetRequiredService<HttpClient>(), new SpecDiskCache()));
+        services.AddSingleton(_ => new SnapshotStore());
 
         services.AddSingleton<MainWindow>();
 
