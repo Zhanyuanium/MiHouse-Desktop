@@ -95,7 +95,7 @@ public partial class App : Application
                 nonceFactory: null,
                 provider.GetRequiredService<IDeviceSecretStore>()));
         services.AddSingleton<ISpecCatalog>(provider =>
-            new SpecCatalog(provider.GetRequiredService<HttpClient>()));
+            new SpecCatalog(provider.GetRequiredService<HttpClient>(), new SpecDiskCache()));
 
         services.AddSingleton<MainWindow>();
 

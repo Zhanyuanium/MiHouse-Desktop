@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Net;
 using System.Text.Json;
@@ -8,12 +9,14 @@ namespace MiHouse.Core.Spec;
 
 /// <summary>
 /// Resolves device models through the published miot-spec index and caches the
-/// resulting definitions in memory.
+/// resulting definitions in memory and, when configured, on disk.
 /// </summary>
 public sealed class SpecCatalog : ISpecCatalog
 {
     private const string _indexUrl = "https://miot-spec.org/miot-spec-v2/instances?status=released";
     private const string _instanceUrlPrefix = "https://miot-spec.org/miot-spec-v2/instance?type=";
+    private const string _indexCacheKey = "instances?status=released";
+    private const string _indexCacheTimestampKey = "instances?status=released:fetched-at";
 
     private static readonly JsonSerializerOptions _serializerOptions = new()
     {
@@ -21,19 +24,33 @@ public sealed class SpecCatalog : ISpecCatalog
         NumberHandling = JsonNumberHandling.AllowReadingFromString,
     };
 
+    private static readonly TimeSpan _indexCacheLifetime = TimeSpan.FromHours(24);
+
     private readonly HttpClient _httpClient;
     private readonly SemaphoreSlim _indexGate = new(1, 1);
     private readonly ConcurrentDictionary<string, SpecInstance> _specs = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _specGates = new(StringComparer.Ordinal);
+    private readonly SpecDiskCache? _diskCache;
+    private readonly TimeProvider _timeProvider;
     private Dictionary<string, string>? _modelTypes;
 
     /// <summary>
     /// Creates a catalog that issues miot-spec requests through <paramref name="httpClient"/>.
     /// </summary>
-    public SpecCatalog(HttpClient httpClient)
+    /// <param name="httpClient">Client used for miot-spec requests.</param>
+    /// <param name="diskCache">
+    /// Optional on-disk cache for raw spec documents; <see langword="null"/> disables disk caching.
+    /// </param>
+    /// <param name="timeProvider">Clock used to evaluate the instance-index cache lifetime.</param>
+    public SpecCatalog(
+        HttpClient httpClient,
+        SpecDiskCache? diskCache = null,
+        TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(httpClient);
         _httpClient = httpClient;
+        _diskCache = diskCache;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     /// <inheritdoc />
@@ -74,20 +91,49 @@ public sealed class SpecCatalog : ISpecCatalog
                 return modelTypes;
             }
 
-            using var response = await SendAsync(_indexUrl, cancellationToken).ConfigureAwait(false);
-            if (response.StatusCode != HttpStatusCode.OK)
+            Dictionary<string, string>? staleIndex = null;
+            var cachedIndex = ReadCachedIndex();
+            if (cachedIndex is { } cached)
             {
-                throw new MiSpecException(
-                    $"The miot-spec instance index request failed with HTTP {(int)response.StatusCode} ({response.ReasonPhrase}).");
+                try
+                {
+                    modelTypes = ParseModelTypes(cached.Json);
+                }
+                catch (MiSpecException)
+                {
+                    modelTypes = null;
+                }
+
+                if (modelTypes is not null)
+                {
+                    if (IsFresh(cached.FetchedAt))
+                    {
+                        Volatile.Write(ref _modelTypes, modelTypes);
+                        return modelTypes;
+                    }
+
+                    staleIndex = modelTypes;
+                }
             }
 
-            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            if (string.IsNullOrWhiteSpace(json))
+            string json;
+            try
             {
-                throw new MiSpecException("The miot-spec instance index response was empty.");
+                json = await FetchIndexJsonAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (IsNetworkFailure(ex, cancellationToken))
+            {
+                if (staleIndex is not null)
+                {
+                    Volatile.Write(ref _modelTypes, staleIndex);
+                    return staleIndex;
+                }
+
+                throw;
             }
 
             modelTypes = ParseModelTypes(json);
+            WriteCachedIndex(json);
             Volatile.Write(ref _modelTypes, modelTypes);
             return modelTypes;
         }
@@ -95,6 +141,64 @@ public sealed class SpecCatalog : ISpecCatalog
         {
             _indexGate.Release();
         }
+    }
+
+    private async Task<string> FetchIndexJsonAsync(CancellationToken cancellationToken)
+    {
+        using var response = await SendAsync(_indexUrl, cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            throw new MiSpecException(
+                $"The miot-spec instance index request failed with HTTP {(int)response.StatusCode} ({response.ReasonPhrase}).");
+        }
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            throw new MiSpecException("The miot-spec instance index response was empty.");
+        }
+
+        return json;
+    }
+
+    private CachedIndex? ReadCachedIndex()
+    {
+        if (_diskCache is null)
+        {
+            return null;
+        }
+
+        var json = _diskCache.TryRead(_indexCacheKey);
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        _ = DateTimeOffset.TryParse(
+            _diskCache.TryRead(_indexCacheTimestampKey),
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.RoundtripKind,
+            out var fetchedAt);
+
+        return new CachedIndex(json, fetchedAt);
+    }
+
+    private bool IsFresh(DateTimeOffset fetchedAt)
+    {
+        return _timeProvider.GetUtcNow() - fetchedAt < _indexCacheLifetime;
+    }
+
+    private void WriteCachedIndex(string json)
+    {
+        if (_diskCache is null)
+        {
+            return;
+        }
+
+        _diskCache.Write(_indexCacheKey, json);
+        _diskCache.Write(
+            _indexCacheTimestampKey,
+            _timeProvider.GetUtcNow().ToString("O", CultureInfo.InvariantCulture));
     }
 
     private static Dictionary<string, string> ParseModelTypes(string json)
@@ -172,6 +276,38 @@ public sealed class SpecCatalog : ISpecCatalog
 
     private async Task<SpecInstance?> FetchSpecAsync(string urn, CancellationToken cancellationToken)
     {
+        if (TryReadCachedSpec(urn, out var cached))
+        {
+            return cached;
+        }
+
+        string? json;
+        try
+        {
+            json = await FetchSpecJsonAsync(urn, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (IsNetworkFailure(ex, cancellationToken))
+        {
+            if (TryReadCachedSpec(urn, out cached))
+            {
+                return cached;
+            }
+
+            throw;
+        }
+
+        if (json is null)
+        {
+            return null;
+        }
+
+        var spec = ParseSpec(urn, json);
+        _diskCache?.Write(urn, json);
+        return spec;
+    }
+
+    private async Task<string?> FetchSpecJsonAsync(string urn, CancellationToken cancellationToken)
+    {
         var url = _instanceUrlPrefix + Uri.EscapeDataString(urn);
         using var response = await SendAsync(url, cancellationToken).ConfigureAwait(false);
         if (response.StatusCode == HttpStatusCode.NotFound)
@@ -186,12 +322,39 @@ public sealed class SpecCatalog : ISpecCatalog
         }
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        return string.IsNullOrWhiteSpace(json) ? null : json;
+    }
+
+    private bool TryReadCachedSpec(string urn, [NotNullWhen(true)] out SpecInstance? spec)
+    {
+        spec = null;
+        var json = _diskCache?.TryRead(urn);
         if (string.IsNullOrWhiteSpace(json))
         {
-            return null;
+            return false;
         }
 
-        return ParseSpec(urn, json);
+        try
+        {
+            spec = ParseSpec(urn, json);
+            return true;
+        }
+        catch (MiSpecException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsNetworkFailure(Exception exception, CancellationToken cancellationToken)
+    {
+        return exception switch
+        {
+            MiSpecException => true,
+            HttpRequestException => true,
+            IOException => true,
+            OperationCanceledException => !cancellationToken.IsCancellationRequested,
+            _ => false,
+        };
     }
 
     private static SpecInstance ParseSpec(string urn, string json)
@@ -372,4 +535,6 @@ public sealed class SpecCatalog : ISpecCatalog
             throw new MiSpecException($"The miot-spec request to '{url}' timed out.", ex);
         }
     }
+
+    private readonly record struct CachedIndex(string Json, DateTimeOffset FetchedAt);
 }

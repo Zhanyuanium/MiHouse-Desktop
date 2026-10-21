@@ -5,10 +5,13 @@ using MiHouse.Core.Spec;
 
 namespace MiHouse.Core.Tests.Spec;
 
-public sealed class SpecCatalogTests
+public sealed class SpecCatalogTests : IDisposable
 {
     private const string _deviceType = "urn:miot-spec-v2:device:light:0000A001:test-one:1";
     private const string _modePropertyType = "urn:miot-spec-v2:property:mode:00000008:test-one:1";
+
+    private readonly string _directory =
+        Path.Combine(Path.GetTempPath(), "MiHouse.Core.Tests", Guid.NewGuid().ToString("N"));
 
     private const string _indexJson = """
         {
@@ -352,6 +355,93 @@ public sealed class SpecCatalogTests
         Assert.Equal(1, handler.CountRequests("/instance"));
     }
 
+    [Fact]
+    public async Task GetForModelAsync_WithDiskCache_WritesFetchedSpec()
+    {
+        var diskCache = new SpecDiskCache(_directory);
+        var handler = new StubHandler(request => IsIndexRequest(request)
+            ? JsonResponse(_indexJson)
+            : JsonResponse(_specJson));
+        var catalog = new SpecCatalog(new HttpClient(handler), diskCache);
+
+        await catalog.GetForModelAsync("test.light.one", CancellationToken.None);
+
+        Assert.Equal(_specJson, diskCache.TryRead(_deviceType));
+    }
+
+    [Fact]
+    public async Task GetForModelAsync_SecondCatalog_ResolvesFromDiskWhenNetworkFails()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var first = CreateOnlineCatalog(now);
+        await first.GetForModelAsync("test.light.one", CancellationToken.None);
+
+        var offline = new StubHandler(_ => throw new HttpRequestException("offline"));
+        var second = new SpecCatalog(
+            new HttpClient(offline),
+            new SpecDiskCache(_directory),
+            new StubTimeProvider(now));
+
+        var spec = await second.GetForModelAsync("test.light.one", CancellationToken.None);
+
+        var instance = Assert.IsType<SpecInstance>(spec);
+        Assert.Equal(_deviceType, instance.Type);
+        Assert.Equal("Test Light", instance.Description);
+        Assert.Equal(0, offline.CountRequests("/instances"));
+        Assert.Equal(0, offline.CountRequests("/instance"));
+    }
+
+    [Fact]
+    public async Task GetForModelAsync_ExpiredIndexCache_RefetchesIndex()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var first = CreateOnlineCatalog(now);
+        await first.GetForModelAsync("test.light.one", CancellationToken.None);
+
+        var handler = new StubHandler(request => IsIndexRequest(request)
+            ? JsonResponse(_indexJson)
+            : JsonResponse(_specJson));
+        var second = new SpecCatalog(
+            new HttpClient(handler),
+            new SpecDiskCache(_directory),
+            new StubTimeProvider(now.AddHours(25)));
+
+        await second.GetForModelAsync("test.light.one", CancellationToken.None);
+
+        Assert.Equal(1, handler.CountRequests("/instances"));
+    }
+
+    [Fact]
+    public async Task GetForModelAsync_ExpiredIndexCacheAndNetworkFailure_UsesStaleIndex()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var first = CreateOnlineCatalog(now);
+        await first.GetForModelAsync("test.light.one", CancellationToken.None);
+
+        var offline = new StubHandler(_ => throw new HttpRequestException("offline"));
+        var second = new SpecCatalog(
+            new HttpClient(offline),
+            new SpecDiskCache(_directory),
+            new StubTimeProvider(now.AddHours(25)));
+
+        var spec = await second.GetForModelAsync("test.light.one", CancellationToken.None);
+
+        var instance = Assert.IsType<SpecInstance>(spec);
+        Assert.Equal(_deviceType, instance.Type);
+        Assert.Equal(1, offline.CountRequests("/instances"));
+    }
+
+    private SpecCatalog CreateOnlineCatalog(DateTimeOffset now)
+    {
+        var handler = new StubHandler(request => IsIndexRequest(request)
+            ? JsonResponse(_indexJson)
+            : JsonResponse(_specJson));
+        return new SpecCatalog(
+            new HttpClient(handler),
+            new SpecDiskCache(_directory),
+            new StubTimeProvider(now));
+    }
+
     private static async Task AssertFetchedTypeAsync(string indexJson, string expectedType)
     {
         var handler = new StubHandler(request => IsIndexRequest(request)
@@ -425,6 +515,19 @@ public sealed class SpecCatalogTests
             }
 
             return Task.FromResult(_respond(request));
+        }
+    }
+
+    private sealed class StubTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
+    }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_directory))
+        {
+            Directory.Delete(_directory, recursive: true);
         }
     }
 }
