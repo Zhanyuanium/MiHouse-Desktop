@@ -34,7 +34,7 @@ public sealed partial class ActionInputViewModel : ObservableObject
     }
 
     public SpecProperty Property { get; }
-    public string Name => Property.Description;
+    public string Name => Property.DisplayName;
     public bool IsBoolean => Property.Format == "bool";
     public bool IsInteger => Property.Format.StartsWith("int", StringComparison.Ordinal) || Property.Format.StartsWith("uint", StringComparison.Ordinal);
     public bool IsNumeric => IsInteger || Property.Format is "float" or "double";

@@ -13,6 +13,7 @@ public sealed record SpecRange(double Min, double Max, double Step);
 /// <summary>
 /// A miot-spec property.
 /// </summary>
+/// <param name="Comment">Localized (usually Chinese) label from the spec, when present.</param>
 public sealed record SpecProperty(
     int Iid,
     string Type,
@@ -22,7 +23,14 @@ public sealed record SpecProperty(
     bool Writable,
     bool Notifiable,
     IReadOnlyList<SpecValueList>? Values,
-    SpecRange? Range);
+    SpecRange? Range,
+    string? Comment = null)
+{
+    /// <summary>
+    /// Label to show in the UI: the localized comment when available, otherwise the description.
+    /// </summary>
+    public string DisplayName => Comment ?? Description;
+}
 
 /// <summary>
 /// A miot-spec action.
@@ -36,12 +44,20 @@ public sealed record SpecAction(
 /// <summary>
 /// One service of a device type.
 /// </summary>
+/// <param name="Comment">Localized (usually Chinese) label from the spec, when present.</param>
 public sealed record SpecService(
     int Iid,
     string Type,
     string Description,
     IReadOnlyList<SpecProperty> Properties,
-    IReadOnlyList<SpecAction> Actions);
+    IReadOnlyList<SpecAction> Actions,
+    string? Comment = null)
+{
+    /// <summary>
+    /// Label to show in the UI: the localized comment when available, otherwise the description.
+    /// </summary>
+    public string DisplayName => Comment ?? Description;
+}
 
 /// <summary>
 /// Resolved miot-spec definition for a device type.

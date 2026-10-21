@@ -242,7 +242,8 @@ public sealed class SpecCatalog : ISpecCatalog
             dto.Type ?? string.Empty,
             dto.Description ?? string.Empty,
             properties,
-            actions);
+            actions,
+            NormalizeComment(dto.Comment));
     }
 
     private static SpecAction MapAction(SpecActionDto dto, IReadOnlyList<SpecProperty> serviceProperties)
@@ -308,7 +309,8 @@ public sealed class SpecCatalog : ISpecCatalog
             access.Exists(entry => string.Equals(entry, "write", StringComparison.OrdinalIgnoreCase)),
             access.Exists(entry => string.Equals(entry, "notify", StringComparison.OrdinalIgnoreCase)),
             values,
-            MapRange(dto.ValueRange));
+            MapRange(dto.ValueRange),
+            NormalizeComment(dto.Comment));
     }
 
     private static SpecRange? MapRange(List<double>? range)
@@ -346,6 +348,11 @@ public sealed class SpecCatalog : ISpecCatalog
     private static int RequireIid(int? iid, string kind)
     {
         return iid ?? throw new MiSpecException($"A miot-spec {kind} is missing its numeric 'iid'.");
+    }
+
+    private static string? NormalizeComment(string? comment)
+    {
+        return string.IsNullOrWhiteSpace(comment) ? null : comment;
     }
 
     private async Task<HttpResponseMessage> SendAsync(string url, CancellationToken cancellationToken)

@@ -111,7 +111,25 @@ Pairing uses `miIO.get_central_link_passcode`.
 Read-only parsing of MiBeacon advertisements is well understood publicly; active control is
 device-dependent and out of scope for the first release.
 
+## Property grouping and labels
+
+The miot-spec instance JSON carries **no normal/advanced flag**. Verified on
+`urn:miot-spec-v2:device:air-conditioner:0000A004:xiaomi-h68h00:1`: a service has
+`iid`, `type`, `description`, `properties`, `comment`; a property has `iid`, `type`,
+`description`, `format`, `access`, `comment`, and optionally `value-list` / `value-range`.
+
+`comment` holds the localized Chinese label (`空调`, `开关`, `模式`, `设定温度`,
+`ECO节能模式`); `description` stays English. The client displays `comment` when present.
+
+The APK contains no air-conditioner panel class and `assets/cardControl/configDes.json`
+does not list this model, so the official app renders it with spec-driven cards plus a
+per-model RN plugin downloaded at runtime. There is therefore **no official, protocol-level
+normal/advanced split to copy**; `SpecSections` is a client-side heuristic over service
+categories (device-information, machine-state, system-parm, enhance, flag-bit, dev-mode,
+maintenance, alarm, fault, power-consumption, electricity, diagnostic → advanced).
+
 ## Open questions
+
 
 - Actual UDP frame layout and handshake behaviour on current firmware.
 - Whether `callMethod` prefers LAN or cloud per device class, and how failures fall back.

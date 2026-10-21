@@ -1,0 +1,11 @@
+<UserControl x:Class="MiHouse.App.Views.GroupPowerSwitch" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="48" Height="28" IsTabStop="True" Loaded="OnLoaded"
+ PointerPressed="OnPressed" PointerMoved="OnMoved" PointerReleased="OnReleased" PointerCanceled="OnCanceled" PointerCaptureLost="OnCanceled" KeyDown="OnKeyDown">
+ <Grid Background="Transparent">
+   <Border x:Name="Track" CornerRadius="14" Background="{ThemeResource ControlAltFillColorSecondaryBrush}" BorderThickness="1" BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}" />
+   <Border x:Name="LitTrack" CornerRadius="14" Background="{ThemeResource AccentFillColorDefaultBrush}" IsHitTestVisible="False" />
+   <Ellipse x:Name="Knob" Width="20" Height="20" Margin="4,0,0,0" HorizontalAlignment="Left" Fill="{ThemeResource TextFillColorSecondaryBrush}" IsHitTestVisible="False">
+     <Ellipse.RenderTransform><TranslateTransform x:Name="KnobOffset" /></Ellipse.RenderTransform>
+   </Ellipse>
+ </Grid>
+</UserControl>

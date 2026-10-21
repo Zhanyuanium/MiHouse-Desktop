@@ -56,6 +56,9 @@ internal sealed class SpecServiceDto
     [JsonPropertyName("description")]
     public string? Description { get; set; }
 
+    [JsonPropertyName("comment")]
+    public string? Comment { get; set; }
+
     [JsonPropertyName("properties")]
     public List<SpecPropertyDto>? Properties { get; set; }
 
@@ -76,6 +79,9 @@ internal sealed class SpecPropertyDto
 
     [JsonPropertyName("description")]
     public string? Description { get; set; }
+
+    [JsonPropertyName("comment")]
+    public string? Comment { get; set; }
 
     [JsonPropertyName("format")]
     public string? Format { get; set; }

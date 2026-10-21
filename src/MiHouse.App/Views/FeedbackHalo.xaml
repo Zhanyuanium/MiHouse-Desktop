@@ -1,0 +1,9 @@
+<UserControl x:Class="MiHouse.App.Views.FeedbackHalo" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" IsHitTestVisible="False" IsTabStop="False"
+  Loaded="OnLoaded" Unloaded="OnUnloaded" AutomationProperties.AccessibilityView="Raw">
+  <Border x:Name="Tint" CornerRadius="{ThemeResource ControlCornerRadius}">
+    <Border.Background><LinearGradientBrush StartPoint="1,1" EndPoint="0,0">
+      <GradientStop Color="{ThemeResource SystemAccentColor}" Offset="0" /><GradientStop Color="Transparent" Offset="0.9" />
+    </LinearGradientBrush></Border.Background>
+  </Border>
+</UserControl>

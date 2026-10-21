@@ -1,0 +1,26 @@
+<UserControl x:Class="MiHouse.App.Views.ActionGroup" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:spec="using:MiHouse.Core.Spec">
+ <StackPanel Spacing="8" Margin="0,12,0,0">
+  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+  <ItemsControl ItemsSource="{Binding Actions}" HorizontalContentAlignment="Stretch"><ItemsControl.ItemTemplate><DataTemplate>
+   <Border Style="{StaticResource PropertySurfaceStyle}"><StackPanel Spacing="10">
+    <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextWrapping="Wrap" Visibility="{Binding HasInputs, Converter={StaticResource BooleanVisibilityConverter}}" />
+    <ItemsControl ItemsSource="{Binding Inputs}" IsEnabled="{Binding CanEdit}" Visibility="{Binding HasInputs, Converter={StaticResource BooleanVisibilityConverter}}" HorizontalContentAlignment="Stretch">
+     <ItemsControl.ItemTemplate><DataTemplate><StackPanel Margin="0,0,0,8">
+      <ToggleSwitch Header="{Binding Name}" IsOn="{Binding BoolValue, Mode=TwoWay}" OnContent="开启" OffContent="关闭" Visibility="{Binding IsBoolean, Converter={StaticResource BooleanVisibilityConverter}}" />
+      <ComboBox Header="{Binding Name}" ItemsSource="{Binding Options}" SelectedItem="{Binding SelectedOption, Mode=TwoWay}" HorizontalAlignment="Stretch" Visibility="{Binding IsChoice, Converter={StaticResource BooleanVisibilityConverter}}">
+       <ComboBox.ItemTemplate><DataTemplate x:DataType="spec:SpecValueList"><TextBlock Text="{x:Bind Description}" /></DataTemplate></ComboBox.ItemTemplate>
+      </ComboBox>
+      <NumberBox Header="{Binding Name}" Value="{Binding NumericValue, Mode=TwoWay}" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" SmallChange="{Binding Step}" SpinButtonPlacementMode="Compact" Visibility="{Binding IsNumber, Converter={StaticResource BooleanVisibilityConverter}}" />
+      <TextBox Header="{Binding Name}" Text="{Binding IntegerText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Visibility="{Binding Is64BitInteger, Converter={StaticResource BooleanVisibilityConverter}}" />
+      <TextBlock Text="{Binding ValidationHint}" Style="{StaticResource SecondaryTextStyle}" Visibility="{Binding Is64BitInteger, Converter={StaticResource BooleanVisibilityConverter}}" />
+      <TextBox Header="{Binding Name}" Text="{Binding StringValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Visibility="{Binding IsString, Converter={StaticResource BooleanVisibilityConverter}}" />
+     </StackPanel></DataTemplate></ItemsControl.ItemTemplate>
+    </ItemsControl>
+    <Button Content="{Binding ButtonLabel}" Command="{Binding InvokeCommand}" AutomationProperties.Name="{Binding AccessibleName}" />
+    <ProgressBar IsIndeterminate="True" Visibility="{Binding IsBusy, Converter={StaticResource BooleanVisibilityConverter}}" />
+    <TextBlock Text="{Binding Output}" Style="{StaticResource SecondaryTextStyle}" Visibility="{Binding HasOutput, Converter={StaticResource BooleanVisibilityConverter}}" />
+    <InfoBar Severity="Error" IsClosable="False" IsOpen="{Binding Error, Converter={StaticResource HasTextConverter}}" Visibility="{Binding HasError, Converter={StaticResource BooleanVisibilityConverter}}" Message="{Binding Error}" />
+   </StackPanel></Border>
+  </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+ </StackPanel>
+</UserControl>

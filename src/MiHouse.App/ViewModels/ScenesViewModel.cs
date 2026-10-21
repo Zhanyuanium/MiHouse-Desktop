@@ -21,15 +21,18 @@ public sealed partial class ScenesViewModel : ObservableObject
     private bool _isLoaded;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasStatus))]
     public partial bool IsBusy { get; set; }
 
     [ObservableProperty]
     public partial bool IsEmpty { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasStatus))]
     public partial string? Error { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasStatus))]
     public partial string? Notice { get; set; }
 
     public ScenesViewModel(IMiHomeCloudClient cloud, MiHomeSession session,
@@ -44,6 +47,7 @@ public sealed partial class ScenesViewModel : ObservableObject
     public string HomeName => _home?.Name ?? "场景";
     public bool HasRunningScenes => _rowsById.Values.Any(row => row.IsBusy);
     public bool CanRefresh => _home is not null && !HasRunningScenes;
+    public bool HasStatus => !string.IsNullOrWhiteSpace(Notice) || !string.IsNullOrWhiteSpace(Error);
 
     internal void SetHome(MiHome? home)
     {
@@ -249,6 +253,8 @@ public sealed partial class SceneRowViewModel : ObservableObject
     private readonly CancellationToken _token;
     private readonly Func<SceneRowViewModel, CancellationToken, Task<bool>> _confirm;
     private readonly Action<string> _onSuccess;
+    private long _executionVersion;
+    public long ExecutionVersion => _executionVersion;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RunCommand))]
@@ -302,6 +308,8 @@ public sealed partial class SceneRowViewModel : ObservableObject
             }
 
             _token.ThrowIfCancellationRequested();
+            _executionVersion++;
+            OnPropertyChanged(nameof(ExecutionVersion));
             await _cloud.RunSceneAsync(_session, _home, _scene.Id, _token);
             _token.ThrowIfCancellationRequested();
             _onSuccess(Name);

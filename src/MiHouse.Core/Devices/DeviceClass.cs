@@ -5,7 +5,7 @@ namespace MiHouse.Core.Devices;
 /// </summary>
 public static class DeviceClass
 {
-    private const int OtherSortOrder = 1000;
+    private const int _otherSortOrder = 1000;
 
     /// <summary>
     /// Extracts the device category from a miot-spec URN, for example
@@ -93,7 +93,7 @@ public static class DeviceClass
         var trimmed = category?.Trim();
         if (string.IsNullOrEmpty(trimmed))
         {
-            return OtherSortOrder;
+            return _otherSortOrder;
         }
 
         return trimmed.ToLowerInvariant() switch
@@ -107,7 +107,7 @@ public static class DeviceClass
             "air-purifier" => 600,
             "humidifier" => 610,
             "sensor" => 700,
-            _ => OtherSortOrder,
+            _ => _otherSortOrder,
         };
     }
 
@@ -135,3 +135,4 @@ public static class DeviceClass
         return true;
     }
 }
+

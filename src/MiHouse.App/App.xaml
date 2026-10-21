@@ -11,6 +11,7 @@
                 <ResourceDictionary Source="Styles/AppStyles.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <!-- Other app resources here -->
+            <FontFamily x:Key="ContentControlThemeFontFamily">Segoe UI Variable</FontFamily>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

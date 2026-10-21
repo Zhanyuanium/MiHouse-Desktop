@@ -2,23 +2,126 @@
   xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
   xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
   xmlns:views="using:MiHouse.App.Views">
+  <ResourceDictionary.ThemeDictionaries>
+    <ResourceDictionary x:Key="Dark">
+      <LinearGradientBrush x:Key="RoomEdgeBrush" StartPoint="0,0" EndPoint="1,0"><GradientStop Color="#00272727" /><GradientStop Color="#FF272727" Offset="1" /></LinearGradientBrush>
+    </ResourceDictionary>
+    <ResourceDictionary x:Key="Light">
+      <LinearGradientBrush x:Key="RoomEdgeBrush" StartPoint="0,0" EndPoint="1,0"><GradientStop Color="#00FAFAFA" /><GradientStop Color="#FFFAFAFA" Offset="1" /></LinearGradientBrush>
+    </ResourceDictionary>
+    <ResourceDictionary x:Key="HighContrast"><SolidColorBrush x:Key="RoomEdgeBrush" Color="Transparent" /></ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
   <views:BooleanVisibilityConverter x:Key="BooleanVisibilityConverter" />
   <views:HasTextConverter x:Key="HasTextConverter" />
   <views:QrImageConverter x:Key="QrImageConverter" />
   <views:OnlineOpacityConverter x:Key="OnlineOpacityConverter" />
+  <views:RoomSelectionBrushConverter x:Key="RoomSelectionBrushConverter" />
+  <views:RoomPillBrushConverter x:Key="RoomPillBrushConverter" />
   <SolidColorBrush x:Key="MonogramTintBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.12" />
   <Style x:Key="SecondaryTextStyle" TargetType="TextBlock" BasedOn="{StaticResource BodyTextBlockStyle}">
     <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
     <Setter Property="TextWrapping" Value="Wrap" />
   </Style>
+  <Thickness x:Key="DashboardCardPadding">12</Thickness>
+  <x:Double x:Key="DashboardCardMinHeight">100</x:Double>
+  <ItemsPanelTemplate x:Key="DashboardCardsPanel"><views:ResponsiveGridPanel MinimumItemWidth="180" MaximumColumns="2" /></ItemsPanelTemplate>
   <Style x:Key="QuietButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderThickness" Value="0" />
   </Style>
   <Style x:Key="PropertySurfaceStyle" TargetType="Border">
     <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
-    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="CornerRadius" Value="{ThemeResource ControlCornerRadius}" />
     <Setter Property="Padding" Value="16" />
     <Setter Property="Margin" Value="0,0,0,8" />
+  </Style>
+  <Style x:Key="SectionSurfaceStyle" TargetType="Border">
+    <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+    <Setter Property="CornerRadius" Value="{ThemeResource ControlCornerRadius}" />
+    <Setter Property="Padding" Value="16" />
+  </Style>
+  <Style x:Key="FlatHitButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+    <Setter Property="Background" Value="Transparent" /><Setter Property="BorderThickness" Value="0" />
+    <Setter Property="UseSystemFocusVisuals" Value="True" />
+    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+      <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" Padding="{TemplateBinding Padding}"
+        Background="Transparent" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center" />
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style x:Key="SectionTileButtonStyle" TargetType="Button" BasedOn="{StaticResource QuietButtonStyle}">
+    <Setter Property="HorizontalAlignment" Value="Stretch" /><Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+    <Setter Property="BorderThickness" Value="0" /><Setter Property="CornerRadius" Value="{ThemeResource ControlCornerRadius}" />
+    <Setter Property="Padding" Value="0" /><Setter Property="VerticalContentAlignment" Value="Stretch" />
+    <Setter Property="MinHeight" Value="{StaticResource DashboardCardMinHeight}" />
+  </Style>
+  <Style x:Key="SceneCardSurfaceStyle" TargetType="Border" BasedOn="{StaticResource SectionSurfaceStyle}">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="MinHeight" Value="{StaticResource DashboardCardMinHeight}" />
+  </Style>
+  <DataTemplate x:Key="SceneCardTemplate">
+    <Border Style="{StaticResource SceneCardSurfaceStyle}">
+      <Grid>
+       <views:FeedbackHalo BurstToken="{Binding ExecutionVersion}" />
+       <Grid ColumnSpacing="12" VerticalAlignment="Center" Padding="{StaticResource DashboardCardPadding}">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="40" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <Border Width="40" Height="40" CornerRadius="12" Background="{ThemeResource MonogramTintBrush}" VerticalAlignment="Center">
+          <Grid>
+            <FontIcon Glyph="&#xE945;" FontSize="20" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+              Visibility="{Binding IsBusy, Converter={StaticResource BooleanVisibilityConverter}, ConverterParameter=Inverse}" />
+            <ProgressRing Width="16" Height="16" MinWidth="16" MinHeight="16" IsActive="{Binding IsBusy}"
+              Visibility="{Binding IsBusy, Converter={StaticResource BooleanVisibilityConverter}}" AutomationProperties.Name="正在执行场景" />
+          </Grid>
+        </Border>
+        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
+          <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{Binding Name}" />
+          <TextBlock Text="已停用" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+            Visibility="{Binding IsDisabled, Converter={StaticResource BooleanVisibilityConverter}}" />
+        </StackPanel>
+        <Button Grid.Column="2" Content="执行" Command="{Binding RunCommand}"
+          VerticalAlignment="Center" HorizontalAlignment="Right" AutomationProperties.Name="{Binding AccessibleName}" />
+        <TextBlock Grid.Row="1" Grid.ColumnSpan="3" Text="{Binding Error}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"
+          Foreground="{ThemeResource SystemFillColorCriticalBrush}" Visibility="{Binding Error, Converter={StaticResource HasTextConverter}}" AutomationProperties.LiveSetting="Polite" />
+       </Grid>
+      </Grid>
+    </Border>
+  </DataTemplate>
+  <Style x:Key="InlinePowerStyle" TargetType="ToggleSwitch">
+    <Setter Property="MinWidth" Value="0" />
+    <Setter Property="Width" Value="48" />
+    <Setter Property="Height" Value="28" />
+    <Setter Property="OnContent" Value="" />
+    <Setter Property="OffContent" Value="" />
+    <Setter Property="ManipulationMode" Value="System,TranslateX" />
+    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToggleSwitch">
+      <Grid x:Name="SwitchAreaGrid" Width="48" Height="28" Background="Transparent">
+        <VisualStateManager.VisualStateGroups>
+          <VisualStateGroup x:Name="CommonStates">
+            <VisualState x:Name="Normal" />
+            <VisualState x:Name="PointerOver"><VisualState.Setters><Setter Target="SwitchAreaGrid.Opacity" Value="0.85" /></VisualState.Setters></VisualState>
+            <VisualState x:Name="Pressed"><VisualState.Setters><Setter Target="SwitchAreaGrid.Opacity" Value="0.7" /></VisualState.Setters></VisualState>
+            <VisualState x:Name="Disabled"><VisualState.Setters><Setter Target="SwitchAreaGrid.Opacity" Value="0.35" /></VisualState.Setters></VisualState>
+          </VisualStateGroup>
+          <VisualStateGroup x:Name="ToggleStates">
+            <VisualState x:Name="Off" />
+            <VisualState x:Name="On"><VisualState.Setters>
+              <Setter Target="SwitchKnobBounds.Fill" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+              <Setter Target="SwitchKnobBounds.StrokeThickness" Value="0" />
+              <Setter Target="KnobTranslateTransform.X" Value="20" />
+              <Setter Target="Knob.Fill" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+            </VisualState.Setters></VisualState>
+          </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+        <Rectangle x:Name="SwitchKnobBounds" RadiusX="14" RadiusY="14" StrokeThickness="1.5" Stroke="{ThemeResource ControlStrongStrokeColorDefaultBrush}" Fill="{ThemeResource ControlAltFillColorSecondaryBrush}" />
+        <Grid x:Name="SwitchKnob" Width="20" Height="20" Margin="4,0,0,0" HorizontalAlignment="Left">
+          <Grid.RenderTransform><TranslateTransform x:Name="KnobTranslateTransform" /></Grid.RenderTransform>
+          <Ellipse x:Name="Knob" Fill="{ThemeResource TextFillColorSecondaryBrush}" />
+        </Grid>
+        <Thumb x:Name="SwitchThumb" AutomationProperties.AccessibilityView="Raw">
+          <Thumb.Template><ControlTemplate TargetType="Thumb"><Rectangle Fill="Transparent" /></ControlTemplate></Thumb.Template>
+        </Thumb>
+      </Grid>
+    </ControlTemplate></Setter.Value></Setter>
   </Style>
 </ResourceDictionary>

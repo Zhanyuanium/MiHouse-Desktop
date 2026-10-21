@@ -1,0 +1,47 @@
+<Page x:Class="MiHouse.App.Views.SettingsPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:views="using:MiHouse.App.Views">
+  <Page.Resources>
+    <Style x:Key="PlannedTag" TargetType="TextBlock">
+      <Setter Property="Text" Value="未实现" /><Setter Property="FontSize" Value="11" />
+      <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}" />
+      <Setter Property="Margin" Value="8,0,0,0" />
+    </Style>
+  </Page.Resources>
+  <views:PageLayout Heading="设置" Subtitle="账号、家庭与使用偏好">
+    <views:PageLayout.Body>
+      <StackPanel Spacing="24">
+        <StackPanel Spacing="10">
+          <TextBlock Text="账号与家庭" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="4,0,0,2" />
+          <views:SettingsCard Header="当前账号" Description="{Binding AccountLabel}" Glyph="&#xE77B;">
+            <views:SettingsCard.Trailing><Button Content="退出登录" Command="{Binding SignOutCommand}" AutomationProperties.Name="退出小米账号并清除本机会话" /></views:SettingsCard.Trailing>
+          </views:SettingsCard>
+          <TextBlock Text="退出将清除本机保存的登录会话。" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="16,0,0,4" />
+          <views:SettingsCard Header="账号管理" Description="管理账号信息与登录方式" Glyph="&#xE8D4;">
+            <views:SettingsCard.Trailing><TextBlock Style="{StaticResource PlannedTag}" /></views:SettingsCard.Trailing>
+          </views:SettingsCard>
+          <views:SettingsCard Header="家庭成员" Description="查看家庭成员与共享权限" Glyph="&#xE716;">
+            <views:SettingsCard.Trailing><TextBlock Style="{StaticResource PlannedTag}" /></views:SettingsCard.Trailing>
+          </views:SettingsCard>
+        </StackPanel>
+        <StackPanel Spacing="10">
+          <TextBlock Text="体验与偏好" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="4,0,0,2" />
+          <views:SettingsCard Header="界面与光效" Description="跟随 Windows 主题、强调色与动画设置" Glyph="&#xE790;">
+            <views:SettingsCard.Trailing><TextBlock Text="跟随系统" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></views:SettingsCard.Trailing>
+          </views:SettingsCard>
+          <views:SettingsCard Header="通知" Description="管理本机操作结果与提醒" Glyph="&#xE7F4;">
+            <views:SettingsCard.Trailing><TextBlock Style="{StaticResource PlannedTag}" /></views:SettingsCard.Trailing>
+          </views:SettingsCard>
+          <views:SettingsCard Header="耗材" Description="设备耗材与剩余寿命" Glyph="&#xE9D9;">
+            <views:SettingsCard.Trailing><TextBlock Style="{StaticResource PlannedTag}" /></views:SettingsCard.Trailing>
+          </views:SettingsCard>
+        </StackPanel>
+        <StackPanel Spacing="10">
+          <TextBlock Text="应用信息" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="4,0,0,2" />
+          <views:SettingsCard Header="关于 MiHouse" Description="版本信息、许可与开源声明" Glyph="&#xE946;">
+            <views:SettingsCard.Trailing><TextBlock Style="{StaticResource PlannedTag}" /></views:SettingsCard.Trailing>
+          </views:SettingsCard>
+        </StackPanel>
+      </StackPanel>
+    </views:PageLayout.Body>
+  </views:PageLayout>
+</Page>

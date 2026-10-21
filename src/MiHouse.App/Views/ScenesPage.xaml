@@ -1,0 +1,21 @@
+<Page x:Class="MiHouse.App.Views.ScenesPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:views="using:MiHouse.App.Views">
+  <views:PageLayout Heading="场景" Subtitle="{Binding HomeName}">
+    <views:PageLayout.Body>
+      <StackPanel Spacing="12">
+        <TextBlock Text="手动场景" Style="{ThemeResource BodyStrongTextBlockStyle}" />
+        <StackPanel Spacing="8" Visibility="{Binding HasStatus, Converter={StaticResource BooleanVisibilityConverter}}">
+          <TextBlock Text="{Binding Notice}" Style="{StaticResource SecondaryTextStyle}" Visibility="{Binding Notice, Converter={StaticResource HasTextConverter}}" />
+          <InfoBar IsOpen="{Binding Error, Converter={StaticResource HasTextConverter}}" Visibility="{Binding Error, Converter={StaticResource HasTextConverter}}" Message="{Binding Error}" IsClosable="False" Severity="Error" />
+        </StackPanel>
+        <Border Style="{StaticResource SectionSurfaceStyle}" Visibility="{Binding IsEmpty, Converter={StaticResource BooleanVisibilityConverter}}">
+          <StackPanel Spacing="8"><TextBlock Text="还没有手动场景" FontWeight="SemiBold" />
+            <TextBlock Text="在米家中创建后，刷新即可在这里执行。" Style="{StaticResource SecondaryTextStyle}" /></StackPanel>
+        </Border>
+        <ItemsControl ItemsSource="{Binding Scenes}" HorizontalContentAlignment="Stretch" ItemTemplate="{StaticResource SceneCardTemplate}">
+          <ItemsControl.ItemsPanel><ItemsPanelTemplate><views:ResponsiveGridPanel MinimumItemWidth="280" MaximumColumns="3" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+        </ItemsControl>
+      </StackPanel>
+    </views:PageLayout.Body>
+  </views:PageLayout>
+</Page>

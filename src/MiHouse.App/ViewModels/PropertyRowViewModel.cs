@@ -16,11 +16,20 @@ public sealed partial class PropertyRowViewModel : ObservableObject
     private bool _isUpdatingValue = true;
     private long _pollVersion;
     private JsonElement? _lastWrittenValue;
+    private JsonElement? _lastKnownValue;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ApplyCommand))]
     [NotifyPropertyChangedFor(nameof(CanEdit))]
     public partial bool IsBusy { get; set; }
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ApplyCommand))]
+    [NotifyPropertyChangedFor(nameof(CanEdit))]
+    public partial bool IsRemoved { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsSectionStart { get; set; }
 
     [ObservableProperty]
     public partial string? Error { get; set; }
@@ -42,6 +51,7 @@ public sealed partial class PropertyRowViewModel : ObservableObject
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ApplyCommand))]
     [NotifyPropertyChangedFor(nameof(HasDisplayValue))]
+    [NotifyPropertyChangedFor(nameof(DisplayCurrentValue))]
     public partial bool HasValue { get; set; }
 
     [ObservableProperty]
@@ -50,7 +60,10 @@ public sealed partial class PropertyRowViewModel : ObservableObject
     public partial bool HasPendingChanges { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasLongValue))]
     public partial string TextValue { get; set; }
+
+    public bool HasLongValue => TextValue.Length > 120;
 
     public PropertyRowViewModel(IDeviceController controller, MiDevice device,
         string serviceName, int siid, SpecProperty property, JsonElement? value, CancellationToken token)
@@ -73,17 +86,25 @@ public sealed partial class PropertyRowViewModel : ObservableObject
 
     public SpecProperty Property { get; }
     public MiPropertyKey Key { get; }
-    public string Name => Property.Description;
+    public string Name => Property.DisplayName;
     public string ApplyLabel => $"应用：{Name}";
     public string ServiceName { get; }
+    public bool IsAdvanced { get; internal set; }
+    public bool IsDetailActive { get; internal set; }
     public IReadOnlyList<SpecValueList> Options => Property.Values ?? [];
     public bool IsBoolean => Property.Format == "bool";
     public bool IsChoice => !IsBoolean && IsInteger && Options.Count > 0;
-    public bool IsRange => !IsBoolean && !IsChoice && IsNumeric && Property.Range is { } range && range.Max > range.Min;
+    public bool IsRange => !IsBoolean && !IsChoice && IsNumeric && Property.Format is not "int64" and not "uint64" && Property.Range is { } range && range.Max > range.Min;
     public bool IsText => !IsBoolean && !IsChoice && !IsRange;
-    public bool IsEditable => Property.Writable && !IsText;
+    public bool IsEditable => Property.Writable && (IsBoolean || IsNumeric || Property.Format == "string");
+    public bool IsCommitText => IsEditable && IsText;
+    public bool IsEditableChoice => IsChoice && IsEditable;
+    public bool IsEditableBoolean => IsBoolean && IsEditable;
+    public bool DisplayCurrentValue => HasValue && !IsChoice && !IsCommitText || HasValue && IsReadOnly;
+    public bool IsReadOnly => !IsEditable;
+    public string EditorText { get; set; } = string.Empty;
     public bool IsEditableRange => IsRange && IsEditable;
-    public bool CanEdit => IsEditable && !IsBusy && !_token.IsCancellationRequested;
+    public bool CanEdit => !IsRemoved && IsEditable && !IsBusy && !_token.IsCancellationRequested;
     public bool IsInteger => Property.Format.StartsWith("int", StringComparison.Ordinal) || Property.Format.StartsWith("uint", StringComparison.Ordinal);
     public bool IsNumeric => IsInteger || Property.Format is "float" or "double";
     public double Minimum => Property.Range?.Min ?? 0;
@@ -97,10 +118,42 @@ public sealed partial class PropertyRowViewModel : ObservableObject
 
     internal long PollVersion => _pollVersion;
 
+    internal void DiscardPendingChanges()
+    {
+        if (IsBusy || !HasPendingChanges)
+        {
+            return;
+        }
+
+        _pollVersion++;
+        if (_lastKnownValue is { } known)
+        {
+            ReadValue(known);
+            return;
+        }
+
+        bool wasUpdating = _isUpdatingValue;
+        _isUpdatingValue = true;
+        try
+        {
+            BoolValue = false;
+            NumericValue = Minimum;
+            SelectedOption = null;
+            TextValue = string.Empty;
+            HasValue = false;
+            HasPendingChanges = false;
+        }
+        finally
+        {
+            _isUpdatingValue = wasUpdating;
+        }
+    }
+
     internal void TryApplyPolledValue(JsonElement value, long version)
     {
         if (version != _pollVersion || HasPendingChanges || IsBusy ||
-            value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined ||
+            (IsBoolean && value.ValueKind is not JsonValueKind.True and not JsonValueKind.False))
         {
             return;
         }
@@ -117,6 +170,17 @@ public sealed partial class PropertyRowViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanApply))]
     private async Task ApplyAsync()
     {
+        if (IsRemoved)
+        {
+            Error = "设备已不在当前家庭";
+            return;
+        }
+
+        if (!CanApply())
+        {
+            return;
+        }
+
         if (IsChoice && SelectedOption is null)
         {
             Error = "请选择一个值";
@@ -136,13 +200,22 @@ public sealed partial class PropertyRowViewModel : ObservableObject
                 numericValue = Math.Clamp(numericValue, range.Min, range.Max);
             }
 
-            JsonElement value = IsBoolean
+            JsonElement value = IsText && Property.Format == "string" ? JsonSerializer.SerializeToElement(EditorText)
+                : IsText && IsInteger ? JsonDocument.Parse(EditorText).RootElement.Clone()
+                : IsText && IsNumeric ? JsonSerializer.SerializeToElement(double.Parse(EditorText, CultureInfo.InvariantCulture))
+                : IsBoolean
                 ? JsonSerializer.SerializeToElement(BoolValue)
                 : IsChoice
                     ? JsonSerializer.SerializeToElement(SelectedOption!.Value)
                     : IsInteger
                         ? JsonSerializer.SerializeToElement((long)Math.Round(numericValue))
                         : JsonSerializer.SerializeToElement(numericValue);
+            if (IsRemoved)
+            {
+                Error = "设备已不在当前家庭";
+                return;
+            }
+
             await _controller.WriteAsync(_device, Key, value, _token);
             _token.ThrowIfCancellationRequested();
             _lastWrittenValue = value.Clone();
@@ -214,6 +287,9 @@ public sealed partial class PropertyRowViewModel : ObservableObject
                 TextValue = SelectedOption?.Description ?? NumericText;
             }
 
+            _lastKnownValue = value.Clone();
+            EditorText = value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.GetRawText();
+            OnPropertyChanged(nameof(EditorText));
             HasValue = true;
             HasPendingChanges = false;
         }
@@ -234,4 +310,34 @@ public sealed partial class PropertyRowViewModel : ObservableObject
     partial void OnBoolValueChanged(bool value) => MarkEdited();
     partial void OnNumericValueChanged(double value) => MarkEdited();
     partial void OnSelectedOptionChanged(SpecValueList? value) => MarkEdited();
+
+    public async Task CommitTextAsync(string text)
+    {
+        if (!CanEdit || !IsText) { return; }
+        EditorText = text;
+        HasPendingChanges = true;
+        if (IsNumeric)
+        {
+            if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double number) || !double.IsFinite(number))
+            { Error = "请输入有效数值"; return; }
+            if (IsInteger)
+            {
+                bool valid = Property.Format switch
+                {
+                    "uint64" => ulong.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
+                    "uint32" => uint.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
+                    "uint16" => ushort.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
+                    "uint8" => byte.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
+                    "int32" => int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
+                    "int16" => short.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
+                    "int8" => sbyte.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out _),
+                    _ => long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)
+                };
+                if (!valid) { Error = "请输入有效整数"; return; }
+            }
+            if (Property.Range is { } range && (number < range.Min || number > range.Max)) { Error = "数值超出设备允许范围"; return; }
+        }
+        HasPendingChanges = true;
+        if (ApplyCommand.CanExecute(null)) { await ApplyCommand.ExecuteAsync(null); }
+    }
 }

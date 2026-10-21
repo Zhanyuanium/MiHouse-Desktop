@@ -1,6 +1,9 @@
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using MiHouse.App.ViewModels;
 using MiHouse.App.Views;
 using MiHouse.Core.Auth;
@@ -34,6 +37,18 @@ public sealed partial class MainWindow : Window
         _secrets = secrets;
         _lan = lan;
         InitializeComponent();
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(WindowTitleBar);
+        WindowTitleBar.Loaded += (_, _) =>
+        {
+            UpdateTitleBarInset();
+            WindowTitleBar.XamlRoot.Changed += (_, _) => UpdateTitleBarInset();
+        };
+        WindowTitleBar.SizeChanged += (_, _) => UpdateTitleBarInset();
+        AppWindow.Changed += (_, _) => DispatcherQueue.TryEnqueue(UpdateTitleBarInset);
+        AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
+        AppWindow.TitleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
+        AppWindow.TitleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
         SizeToDefaultLogicalSize();
         Closed += OnClosed;
         ShowLogin();
@@ -53,10 +68,25 @@ public sealed partial class MainWindow : Window
             (int)(_defaultHeight * scale)));
     }
 
+    private void UpdateTitleBarInset()
+    {
+        // SDK 2.3.9 TitleBar.UpdatePadding assigns physical RightInset directly
+        // to this XAML column. Correct only the inset, keeping the native template,
+        // drag regions and caption buttons. Remove when the SDK converts for DPI.
+        if (WindowTitleBar.XamlRoot is { } root && VisualTreeHelper.GetChildrenCount(WindowTitleBar) > 0 &&
+            VisualTreeHelper.GetChild(WindowTitleBar, 0) is Grid layout &&
+            layout.FindName("RightPaddingColumn") is ColumnDefinition padding)
+        {
+            padding.Width = new GridLength(AppWindow.TitleBar.RightInset / root.RasterizationScale);
+        }
+    }
+
     private void ShowLogin()
     {
         StopCurrentPage();
         _secrets.Clear();
+        WindowTitleBar.DataContext = null;
+        HomeSwitcher.Visibility = Visibility.Collapsed;
         var viewModel = new LoginViewModel(_auth, _credentials);
         viewModel.SignedIn += ShowDevices;
         RootFrame.Content = new LoginPage(viewModel);
@@ -67,8 +97,12 @@ public sealed partial class MainWindow : Window
         StopCurrentPage();
         var controller = new DeviceController(_cloud, _specs, session, _lan, _secrets);
         var viewModel = new DevicesViewModel(_cloud, controller, _credentials, session);
+        WindowTitleBar.DataContext = viewModel;
+        HomeSwitcher.Visibility = Visibility.Visible;
         viewModel.SignedOut += ShowLogin;
-        RootFrame.Content = new DevicesPage(viewModel);
+        var page = new DevicesPage(viewModel);
+        page.NavigationPaneWidthChanged += OnNavigationPaneWidthChanged;
+        RootFrame.Content = page;
     }
 
     private void StopCurrentPage()
@@ -80,10 +114,15 @@ public sealed partial class MainWindow : Window
         }
         else if (RootFrame.Content is DevicesPage devices)
         {
+            devices.NavigationPaneWidthChanged -= OnNavigationPaneWidthChanged;
             devices.ViewModel.SignedOut -= ShowLogin;
             devices.ViewModel.Stop();
         }
     }
+
+    // Equal 8 px insets only make sense against the expanded pane; the 56 px compact
+    // rail would otherwise squash the switcher to 40 px, so keep the default width.
+    private void OnNavigationPaneWidthChanged(object? sender, double width) => HomeSwitcher.Width = Math.Max(192, width - 16);
 
     private void OnClosed(object sender, WindowEventArgs args) => StopCurrentPage();
 

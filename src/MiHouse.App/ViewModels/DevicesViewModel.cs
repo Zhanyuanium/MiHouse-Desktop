@@ -18,21 +18,24 @@ public sealed partial class HomeRowViewModel(MiHome home)
 }
 
 [Microsoft.UI.Xaml.Data.Bindable]
-public sealed partial class DeviceRowViewModel(MiDevice device)
-{
-    public MiDevice Device { get; } = device;
-    public string Name => string.IsNullOrWhiteSpace(Device.Name) ? Device.Model : Device.Name;
-    public string Model => Device.Model;
-    public string Monogram => System.Globalization.StringInfo.GetNextTextElement(Name);
-    public string OnlineLabel => Device.IsOnline ? "在线" : "离线";
-    public bool IsOnline => Device.IsOnline;
-    public string AccessibleName => $"{Name}，{OnlineLabel}，{Model}";
-}
-
-[Microsoft.UI.Xaml.Data.Bindable]
 public sealed partial class RoomGroup(string name, IEnumerable<DeviceRowViewModel> devices) : ObservableCollection<DeviceRowViewModel>(devices)
 {
+    private bool _isActive;
     public string Name { get; } = name;
+    public bool IsActive
+    {
+        get => _isActive;
+        set
+        {
+            if (_isActive != value)
+            {
+                _isActive = value;
+                OnPropertyChanged(new System.ComponentModel.PropertyChangedEventArgs(nameof(IsActive)));
+                OnPropertyChanged(new System.ComponentModel.PropertyChangedEventArgs(nameof(SelectionStatus)));
+            }
+        }
+    }
+    public string SelectionStatus => IsActive ? "当前房间" : string.Empty;
 }
 
 [Microsoft.UI.Xaml.Data.Bindable]
@@ -48,15 +51,19 @@ public sealed partial class DevicesViewModel : ObservableObject
     private bool _isSigningOut;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRoomLoading), nameof(IsRoomFailed), nameof(IsRoomEmpty), nameof(IsRefreshBusy))]
+    [NotifyCanExecuteChangedFor(nameof(RefreshCurrentPageCommand))]
     public partial bool IsBusy { get; set; }
 
     [ObservableProperty]
     public partial bool IsDetailBusy { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRoomLoading), nameof(IsRoomFailed), nameof(IsRoomEmpty))]
     public partial string? Error { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasDetailStatus))]
     public partial string? DetailError { get; set; }
 
     [ObservableProperty]
@@ -71,6 +78,7 @@ public sealed partial class DevicesViewModel : ObservableObject
     public partial HomeRowViewModel? SelectedHome { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasDetailStatus))]
     public partial string? DetailMessage { get; set; }
 
     [ObservableProperty]
@@ -84,12 +92,22 @@ public sealed partial class DevicesViewModel : ObservableObject
         _credentials = credentials;
         _session = session;
         ScenePanel = new ScenesViewModel(cloud, session, RequestSceneConfirmationAsync);
+        ScenePanel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ScenesViewModel.IsBusy))
+            {
+                OnPropertyChanged(nameof(IsRefreshBusy));
+                RefreshCurrentPageCommand.NotifyCanExecuteChanged();
+            }
+        };
+        Properties.CollectionChanged += OnDetailPropertiesChanged;
     }
 
     public event Action? SignedOut;
     internal Func<ActionRowViewModel, CancellationToken, Task<bool>>? ConfirmAction { get; set; }
     internal Func<SceneRowViewModel, CancellationToken, Task<bool>>? ConfirmScene { get; set; }
     public ScenesViewModel ScenePanel { get; }
+    public bool IsRefreshBusy => IsBusy || ScenePanel.IsBusy;
     public ObservableCollection<HomeRowViewModel> Homes { get; } = [];
     public ObservableCollection<RoomGroup> Rooms { get; } = [];
     public ObservableCollection<PropertyRowViewModel> Properties { get; } = [];
@@ -118,8 +136,7 @@ public sealed partial class DevicesViewModel : ObservableObject
         IsEmpty = false;
         HasNoHomes = false;
         Error = null;
-        SelectedDevice = null;
-        Rooms.Clear();
+        string? previousRoom = ActiveRoom?.Name;
         try
         {
             if (SelectedHome is null)
@@ -158,13 +175,63 @@ public sealed partial class DevicesViewModel : ObservableObject
 
             IReadOnlyList<MiDevice> devices = await _cloud.GetDevicesAsync(_session, selectedHome.Home, token);
             token.ThrowIfCancellationRequested();
-            foreach (IGrouping<string, MiDevice> room in devices.GroupBy(device =>
-                string.IsNullOrWhiteSpace(device.RoomName) ? "未分配房间" : device.RoomName).OrderBy(room => room.Key))
+            DeviceRowViewModel[] rows = MergeDevices(devices);
+            Rooms.Clear();
+            foreach (string roomName in selectedHome.Home.Rooms.Select(room => room.Name).Concat(rows.Select(row => row.RoomName))
+                .Where(name => !string.IsNullOrWhiteSpace(name)).Distinct().OrderBy(name => name))
             {
-                Rooms.Add(new RoomGroup(room.Key, room.OrderBy(device => device.Name).Select(device => new DeviceRowViewModel(device))));
+                Rooms.Add(new RoomGroup(roomName, rows.Where(row => row.RoomName == roomName).OrderBy(row => row.Name)));
             }
 
-            IsEmpty = devices.Count == 0;
+            IsEmpty = rows.Length == 0;
+            SetDeviceClasses(rows);
+
+            if (CurrentPage == ShellPageKind.Room)
+            {
+                if (_activeClassName is { } className && DeviceClasses.FirstOrDefault(group => group.Name == className) is { } activeClass)
+                { ShowClass(activeClass); }
+                else
+                {
+                    RoomGroup? room = Rooms.FirstOrDefault(room => room.Name == previousRoom);
+                    if (room is not null)
+                    {
+                        RebindRoom(room);
+                    }
+                    else
+                    {
+                        NavigateHome();
+                    }
+                }
+            }
+
+            if (ScenePanel.RefreshCommand.CanExecute(null)) { _ = ScenePanel.RefreshCommand.ExecuteAsync(null); }
+            using var concurrency = new SemaphoreSlim(4);
+            await Task.WhenAll(rows.Select(async row =>
+            {
+                await concurrency.WaitAsync(token);
+                try
+                {
+                    if (!row.IsRemoved)
+                    {
+                        await row.RefreshReadingsAsync(token);
+                    }
+                }
+                finally
+                {
+                    concurrency.Release();
+                }
+            }));
+            token.ThrowIfCancellationRequested();
+            DeviceRowViewModel[] currentRows = _deviceRows.Values.ToArray();
+            SetDeviceClasses(currentRows);
+            SensorReadings.Clear();
+            foreach (SensorReadingViewModel reading in currentRows.Where(row => !row.IsRemoved).SelectMany(row => row.SensorReadings))
+            {
+                SensorReadings.Add(reading);
+            }
+
+            OnPropertyChanged(nameof(HasSensorReadings));
+            OnPropertyChanged(nameof(MetricGroups));
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
@@ -195,10 +262,12 @@ public sealed partial class DevicesViewModel : ObservableObject
         _selectionLifetime?.Dispose();
         _selectionLifetime = new CancellationTokenSource();
         CancellationToken token = _selectionLifetime.Token;
+        foreach (PropertyRowViewModel property in Properties) { property.IsDetailActive = false; }
         Properties.Clear();
+        IsAdvancedExpanded = false;
         ActionServices.Clear();
         DetailError = null;
-        DetailMessage = null;
+        DetailMessage = row is { IsRemoved: true } ? "设备已从当前家庭移除" : null;
         IsDetailBusy = row is not null;
         if (row is null)
         {
@@ -207,7 +276,9 @@ public sealed partial class DevicesViewModel : ObservableObject
 
         try
         {
-            SpecInstance? spec = await _controller.GetSpecAsync(row.Device, token);
+            await row.EnsureInitializedAsync();
+            token.ThrowIfCancellationRequested();
+            SpecInstance? spec = row.Spec ?? await _controller.GetSpecAsync(row.Device, token);
             token.ThrowIfCancellationRequested();
             if (spec is null)
             {
@@ -215,16 +286,9 @@ public sealed partial class DevicesViewModel : ObservableObject
                 return;
             }
 
-            foreach (SpecService service in spec.Services.Where(service => service.Actions.Count > 0))
+            foreach (ActionServiceViewModel actions in row.GetActions(spec, RequestActionConfirmationAsync))
             {
-                // Unbinding is an account operation that this client does not expose.
-                SpecAction[] actions = service.Actions
-                    .Where(action => !action.Type.Contains("unbind", StringComparison.OrdinalIgnoreCase)).ToArray();
-                if (actions.Length > 0)
-                {
-                    ActionServices.Add(new ActionServiceViewModel(service.Description, actions.Select(action =>
-                        new ActionRowViewModel(_controller, row.Device, service.Iid, action, token, RequestActionConfirmationAsync)).ToArray()));
-                }
+                ActionServices.Add(actions);
             }
 
             _readableKeys = spec.Services.SelectMany(service => service.Properties
@@ -234,8 +298,9 @@ public sealed partial class DevicesViewModel : ObservableObject
             {
                 foreach (SpecProperty property in service.Properties.Where(property => property.Readable || property.Writable || property.Notifiable))
                 {
-                    Properties.Add(new PropertyRowViewModel(_controller, row.Device, service.Description,
-                        service.Iid, property, null, token));
+                    PropertyRowViewModel propertyRow = row.GetProperty(service, property);
+                    propertyRow.IsDetailActive = true;
+                    Properties.Add(propertyRow);
                 }
             }
 
@@ -260,6 +325,11 @@ public sealed partial class DevicesViewModel : ObservableObject
             if (!token.IsCancellationRequested)
             {
                 IsDetailBusy = false;
+                if (row.IsRemoved)
+                {
+                    DetailMessage = "设备已从当前家庭移除";
+                }
+
                 StartPolling();
             }
         }
@@ -307,6 +377,7 @@ public sealed partial class DevicesViewModel : ObservableObject
 
             OnPropertyChanged(nameof(HasHomes));
             Rooms.Clear();
+            ClearDashboard();
             Properties.Clear();
             ActionServices.Clear();
             IsEmpty = false;
@@ -326,6 +397,7 @@ public sealed partial class DevicesViewModel : ObservableObject
     {
         _isPollingActive = false;
         ResetPollingState();
+        ResetDeviceOperations();
         ScenePanel.Stop();
         _listLifetime?.Cancel();
         _listLifetime?.Dispose();
@@ -339,9 +411,20 @@ public sealed partial class DevicesViewModel : ObservableObject
 
     partial void OnSelectedDeviceChanged(DeviceRowViewModel? value) => _ = LoadPropertiesAsync(value);
 
+    partial void OnSelectedDeviceChanging(DeviceRowViewModel? oldValue, DeviceRowViewModel? newValue) => oldValue?.DiscardDrafts();
+
     partial void OnSelectedHomeChanged(HomeRowViewModel? value)
     {
+        if (!_isUpdatingHomes)
+        {
+            _listLifetime?.Cancel();
+        }
+
         ScenePanel.SetHome(value?.Home);
+        NavigateHome();
+        ResetDeviceOperations();
+        Rooms.Clear();
+        ClearDashboard();
         if (!_isUpdatingHomes)
         {
             _ = LoadDevicesAsync();

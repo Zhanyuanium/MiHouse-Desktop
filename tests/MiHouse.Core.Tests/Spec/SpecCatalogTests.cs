@@ -38,11 +38,13 @@ public sealed class SpecCatalogTests
               "iid": 2,
               "type": "urn:miot-spec-v2:service:light:00007802:test-one:1",
               "description": "Light",
+              "comment": "灯光",
               "properties": [
                 {
                   "iid": 1,
                   "type": "urn:miot-spec-v2:property:on:00000006:test-one:1",
                   "description": "Switch Status",
+                  "comment": "   ",
                   "format": "bool",
                   "access": ["read", "write", "notify"]
                 },
@@ -50,6 +52,7 @@ public sealed class SpecCatalogTests
                   "iid": 2,
                   "type": "urn:miot-spec-v2:property:mode:00000008:test-one:1",
                   "description": "Mode",
+                  "comment": "模式",
                   "format": "uint8",
                   "access": ["read", "write"],
                   "value-list": [
@@ -167,6 +170,42 @@ public sealed class SpecCatalogTests
 
         Assert.Equal(1, handler.CountRequests("/instances"));
         Assert.Equal(1, handler.CountRequests("/instance"));
+    }
+
+    [Fact]
+    public async Task GetForModelAsync_ParsesCommentsAndDisplayNames()
+    {
+        var handler = new StubHandler(request => IsIndexRequest(request)
+            ? JsonResponse(_indexJson)
+            : JsonResponse(_specJson));
+        var catalog = new SpecCatalog(new HttpClient(handler));
+
+        var spec = await catalog.GetForModelAsync("test.light.one", CancellationToken.None);
+
+        var instance = Assert.IsType<SpecInstance>(spec);
+
+        var light = instance.Services[0];
+        Assert.Equal("Light", light.Description);
+        Assert.Equal("灯光", light.Comment);
+        Assert.Equal("灯光", light.DisplayName);
+
+        var power = light.Properties[0];
+        Assert.Equal("Switch Status", power.Description);
+        Assert.Null(power.Comment);
+        Assert.Equal("Switch Status", power.DisplayName);
+
+        var mode = light.Properties[1];
+        Assert.Equal("Mode", mode.Description);
+        Assert.Equal("模式", mode.Comment);
+        Assert.Equal("模式", mode.DisplayName);
+
+        var temperature = light.Properties[2];
+        Assert.Null(temperature.Comment);
+        Assert.Equal(string.Empty, temperature.DisplayName);
+
+        var battery = instance.Services[1];
+        Assert.Null(battery.Comment);
+        Assert.Equal(string.Empty, battery.DisplayName);
     }
 
     [Fact]
