@@ -808,8 +808,13 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
             channelSiid = null;
         }
 
-        // A present split object that does not name both halves must fail closed instead of
-        // falling back to parent-wide control as if this were an ordinary device.
+        // The cloud sends `"split": {}` for ordinary devices; only a split object that names
+        // one half without the other is malformed.
+        if (parentDid is null && channelSiid is null)
+        {
+            return (null, null, false);
+        }
+
         return (parentDid, channelSiid, parentDid is null || channelSiid is null);
     }
 

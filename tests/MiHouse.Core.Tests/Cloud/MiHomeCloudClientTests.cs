@@ -369,7 +369,7 @@ public sealed class MiHomeCloudClientTests
     }
 
     [Fact]
-    public async Task GetDevicesAsyncFailsClosedWhenSplitObjectIsEmpty()
+    public async Task GetDevicesAsyncTreatsEmptySplitObjectAsOrdinaryDevice()
     {
         const string response = """
             {"code":0,"result":{"device_info":[
@@ -386,7 +386,7 @@ public sealed class MiHomeCloudClientTests
 
         Assert.Null(device.ParentDid);
         Assert.Null(device.ChannelSiid);
-        Assert.True(device.IsSplitMetadataIncomplete);
+        Assert.False(device.IsSplitMetadataIncomplete);
         Assert.False(device.IsSplitIncomplete);
     }
 
