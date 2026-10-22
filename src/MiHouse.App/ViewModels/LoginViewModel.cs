@@ -118,7 +118,9 @@ public sealed partial class LoginViewModel : ObservableObject
             QrImageUrl = ticket.ImageUrl;
             token.ThrowIfCancellationRequested();
             State = QrLoginState.Waiting;
-            IsBusy = false;
+
+            // IsBusy stays set until the page reports the image as shown or failed, so the progress
+            // ring covers the whole download instead of disappearing over an empty square.
             while (DateTimeOffset.UtcNow < ticket.ExpiresAt)
             {
                 MiHomeSession? session = await _auth.PollQrLoginAsync(ticket, token);
@@ -246,6 +248,20 @@ public sealed partial class LoginViewModel : ObservableObject
         QrImageUrl = null;
         Error = "二维码图片加载失败，请刷新后重试";
         State = QrLoginState.Failed;
+    }
+
+    /// <summary>
+    /// Clears the busy indicator once the QR image for <paramref name="attemptedUrl"/> is visible.
+    /// </summary>
+    public void ReportQrImageReady(string attemptedUrl)
+    {
+        if (!IsQrMode || string.IsNullOrEmpty(QrImageUrl) ||
+            !string.Equals(QrImageUrl, attemptedUrl, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        IsBusy = false;
     }
 
     private CancellationToken RenewLifetime()
