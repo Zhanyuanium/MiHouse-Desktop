@@ -32,11 +32,12 @@ public sealed partial class MainWindow : Window
     private readonly DeviceClassification _classification;
     private readonly AppearanceSettings _appearance;
     private readonly AppearanceService _appearanceService;
+    private readonly HttpClient _http;
 
     public MainWindow(ILogger<MainWindow> logger, IAuthService auth, ICredentialStore credentials,
         IMiHomeCloudClient cloud, ISpecCatalog specs, IDeviceSecretStore secrets, ILanTransport lan,
         SnapshotStore snapshots, DeviceClassification classification, AppearanceSettings appearance,
-        AppearanceService appearanceService)
+        AppearanceService appearanceService, HttpClient http)
     {
         _auth = auth;
         _credentials = credentials;
@@ -48,6 +49,7 @@ public sealed partial class MainWindow : Window
         _classification = classification;
         _appearance = appearance;
         _appearanceService = appearanceService;
+        _http = http;
         InitializeComponent();
         Title = AppResources.DisplayName;
         ExtendsContentIntoTitleBar = true;
@@ -105,7 +107,7 @@ public sealed partial class MainWindow : Window
         WindowTitleBar.IsPaneToggleButtonVisible = false;
         var viewModel = new LoginViewModel(_auth, _credentials);
         viewModel.SignedIn += ShowDevices;
-        RootFrame.Content = new LoginPage(viewModel);
+        RootFrame.Content = new LoginPage(viewModel, _http);
     }
 
     private void ShowDevices(MiHomeSession session)
