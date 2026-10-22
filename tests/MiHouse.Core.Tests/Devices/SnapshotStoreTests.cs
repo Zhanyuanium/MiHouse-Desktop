@@ -99,6 +99,39 @@ public sealed class SnapshotStoreTests : IDisposable
     }
 
     [Fact]
+    public void SaveDevices_ThenTryLoad_RoundTripsSubclassClassification()
+    {
+        var store = new SnapshotStore(_root);
+        MiDevice device = new("parent-1.s2", "m.switch", "Switch 1", null, true,
+            "parent-1", 2, "urn:miot-spec-v2:device:switch:0000A003:test:1", null, false, 7, "light");
+
+        store.SaveDevices(_userId, _home, [device]);
+
+        Assert.True(store.TryLoadDevices(_userId, _home, out IReadOnlyList<MiDevice> devices));
+        MiDevice loaded = Assert.Single(devices);
+        Assert.Equal(device, loaded);
+        Assert.Equal(7, loaded.SubclassId);
+        Assert.Equal("light", loaded.SubclassCategory);
+    }
+
+    [Fact]
+    public void TryLoadDevices_SnapshotWithoutSubclassFields_LoadsNulls()
+    {
+        var store = new SnapshotStore(_root);
+        WriteDevicesRaw(JsonSerializer.Serialize(new
+        {
+            Version = 1,
+            SavedAtUtc = DateTimeOffset.UtcNow,
+            Devices = new[] { new { Did = "did-1", Model = "model", Name = "Device", IsOnline = true } }
+        }));
+
+        Assert.True(store.TryLoadDevices(_userId, _home, out IReadOnlyList<MiDevice> devices));
+        MiDevice device = Assert.Single(devices);
+        Assert.Null(device.SubclassId);
+        Assert.Null(device.SubclassCategory);
+    }
+
+    [Fact]
     public void TryLoadDevices_SnapshotWithoutSplitMarker_LoadsOrdinaryDevice()
     {
         var store = new SnapshotStore(_root);

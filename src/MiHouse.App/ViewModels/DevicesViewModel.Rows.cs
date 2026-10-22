@@ -6,6 +6,7 @@ namespace MiHouse.App.ViewModels;
 public sealed partial class DevicesViewModel
 {
     private readonly Dictionary<string, DeviceRowViewModel> _deviceRows = new(StringComparer.Ordinal);
+    private HashSet<string> _splitParentDids = new(StringComparer.Ordinal);
     private CancellationTokenSource? _homeLifetime;
     private string? _verifiedHomeId;
     private bool _observesEnvironmentReadings;
@@ -59,6 +60,23 @@ public sealed partial class DevicesViewModel
                 DropDevice(row);
             }
         }
+
+        // The split relation can change with any refresh, so it is rebuilt from this list only.
+        // A parent whose first channel is listed as its own row is hidden from the room view:
+        // the parent row controls siid 2, which that row already addresses. Without a usable
+        // first-channel row the parent stays visible, so the room never loses that control.
+        var splitParentDids = new HashSet<string>(StringComparer.Ordinal);
+        foreach (MiDevice device in devices)
+        {
+            if (!string.IsNullOrEmpty(device.ParentDid)
+                && !device.IsSplitMetadataIncomplete
+                && device.ChannelSiid == 2)
+            {
+                splitParentDids.Add(device.ParentDid);
+            }
+        }
+
+        _splitParentDids = splitParentDids;
 
         NotifyEnvironmentReadingsState();
         return _deviceRows.Values.ToArray();
@@ -140,6 +158,7 @@ public sealed partial class DevicesViewModel
         }
 
         _deviceRows.Clear();
+        _splitParentDids.Clear();
         _verifiedHomeId = null;
         _homeLifetime?.Cancel();
         _homeLifetime?.Dispose();

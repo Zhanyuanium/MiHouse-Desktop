@@ -58,7 +58,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject
         ? Error is null ? "此设备没有统一的电源属性" : "设备能力读取失败"
         : Power.IsWriteUnconfirmed ? "已写入，正在等待设备确认"
         : !Power.HasValue ? "当前值不可用，暂不能切换电源" : "切换电源，立即写入";
-    private string? Category => DeviceClass.FromSpecType(Device.SpecType) ?? DeviceClass.FromSpecType(Spec?.Type);
+    private string? Category => DeviceClass.ResolveCategory(Device, Spec?.Type);
     public string ClassName => DeviceClass.DisplayName(Category);
     internal int ClassOrder => DeviceClass.SortOrder(Category);
     internal SpecInstance? Spec { get; private set; }

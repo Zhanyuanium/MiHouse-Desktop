@@ -71,6 +71,7 @@ public sealed partial class DevicesViewModel : ObservableObject
     private readonly ICredentialStore _credentials;
     private readonly MiHomeSession _session;
     private readonly SnapshotStore _snapshots;
+    private readonly DeviceClassification _classification;
     private readonly long? _userId;
     private CancellationTokenSource? _listLifetime;
     private CancellationTokenSource? _selectionLifetime;
@@ -118,13 +119,14 @@ public sealed partial class DevicesViewModel : ObservableObject
     public partial DeviceRowViewModel? SelectedDevice { get; set; }
 
     public DevicesViewModel(IMiHomeCloudClient cloud, IDeviceController controller, ICredentialStore credentials,
-        MiHomeSession session, SnapshotStore snapshots)
+        MiHomeSession session, SnapshotStore snapshots, DeviceClassification classification)
     {
         _cloud = cloud;
         _controller = controller;
         _credentials = credentials;
         _session = session;
         _snapshots = snapshots;
+        _classification = classification;
         _userId = long.TryParse(session.UserId, NumberStyles.None, CultureInfo.InvariantCulture, out long userId)
             ? userId
             : null;
@@ -242,6 +244,11 @@ public sealed partial class DevicesViewModel : ObservableObject
             }
 
             IReadOnlyList<MiDevice> devices = await _cloud.GetDevicesAsync(_session, selectedHome.Home, token);
+            token.ThrowIfCancellationRequested();
+            MiDevice[] previousDevices = _deviceRows.Values.Select(row => row.Device).ToArray();
+            DeviceClassificationResult classified = await _classification.EnrichAsync(
+                _session, devices, previousDevices, token);
+            devices = classified.Devices;
             token.ThrowIfCancellationRequested();
             DeviceRowViewModel[] rows = MergeDevices(devices);
             _verifiedHomeId = selectedHome.Home.Id;

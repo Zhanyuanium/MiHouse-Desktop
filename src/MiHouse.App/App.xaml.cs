@@ -106,6 +106,14 @@ public partial class App : Application
                 new SpecDiskCache(AppStorage.Current.CachePath("spec"))));
         services.AddSingleton(
             _ => new SnapshotStore(AppStorage.Current.CachePath("snapshots")));
+        services.AddSingleton(provider =>
+            new SwitchSubclassCatalog(
+                AppStorage.Current.CachePath("switch-subclass"),
+                provider.GetRequiredService<IMiHomeCloudClient>()));
+        services.AddSingleton(provider =>
+            new DeviceClassification(
+                provider.GetRequiredService<IMiHomeCloudClient>(),
+                provider.GetRequiredService<SwitchSubclassCatalog>()));
 
         services.AddSingleton<MainWindow>();
 

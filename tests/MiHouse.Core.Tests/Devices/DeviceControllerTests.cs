@@ -801,6 +801,18 @@ public sealed class DeviceControllerTests
             CancellationToken cancellationToken)
             => throw new NotSupportedException();
 
+        public Task<IReadOnlyList<SwitchSubclass>> GetSwitchSubclassesAsync(
+            MiHomeSession session,
+            CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<SwitchSubclass>>([]);
+
+        public Task<IReadOnlyDictionary<string, IReadOnlyDictionary<int, int>>> GetSwitchMembershipsAsync(
+            MiHomeSession session,
+            IReadOnlyList<string> parentDids,
+            CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyDictionary<string, IReadOnlyDictionary<int, int>>>(
+                new Dictionary<string, IReadOnlyDictionary<int, int>>());
+
         public Task<IReadOnlyList<MiScene>> GetScenesAsync(
             MiHomeSession session,
             MiHome home,

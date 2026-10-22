@@ -23,6 +23,23 @@ public interface IMiHomeCloudClient
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Returns the cloud's switch subclass catalog, keyed by subclass id. The catalog names the
+    /// kind of device behind each switch channel.
+    /// </summary>
+    Task<IReadOnlyList<SwitchSubclass>> GetSwitchSubclassesAsync(
+        MiHomeSession session,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns the switch channel membership of <paramref name="parentDids"/>: parent device id
+    /// to member index to subclass id. Callers pass distinct, non-empty device ids.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, IReadOnlyDictionary<int, int>>> GetSwitchMembershipsAsync(
+        MiHomeSession session,
+        IReadOnlyList<string> parentDids,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Reads the given properties of one device.
     /// </summary>
     /// <remarks>

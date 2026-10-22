@@ -24,6 +24,15 @@ namespace MiHouse.Core.Devices;
 /// True when the cloud reported a <c>split</c> object without a usable parent and channel. This
 /// is distinct from a device that reports no split metadata at all, which is an ordinary device.
 /// </param>
+/// <param name="SubclassId">
+/// Switch subclass id reported by the cloud for this device or channel, when available. For a
+/// split channel the parent carries it in its sub-relation membership rather than the device list.
+/// </param>
+/// <param name="SubclassCategory">
+/// <see cref="DeviceClass"/> category key resolved from <paramref name="SubclassId"/> while the
+/// device list is assembled. It is cached with the device snapshot and may be absent when the
+/// catalog could not be read.
+/// </param>
 public sealed record MiDevice(
     string Did,
     string Model,
@@ -34,7 +43,9 @@ public sealed record MiDevice(
     int? ChannelSiid = null,
     string? SpecType = null,
     string? LocalIp = null,
-    bool IsSplitMetadataIncomplete = false)
+    bool IsSplitMetadataIncomplete = false,
+    int? SubclassId = null,
+    string? SubclassCategory = null)
 {
     /// <summary>
     /// Device id to use for control requests: the parent for split sub-devices, otherwise

@@ -281,6 +281,170 @@ public sealed class MiHomeCloudClientTests
     }
 
     [Fact]
+    public async Task GetDevicesAsyncReadsTopLevelSubclassId()
+    {
+        const string response = """
+            {"code":0,"result":{"device_info":[
+            {"did":"a","model":"m.a","name":"A","isOnline":true,"subclass_id":7},
+            {"did":"b","model":"m.b","name":"B","isOnline":true,"subclass_id":"8"},
+            {"did":"c","model":"m.c","name":"C","isOnline":true}],
+            "has_more":false}}
+            """;
+        var client = CreateClient(new StubHttpMessageHandler(response));
+
+        var devices = await client.GetDevicesAsync(
+            _session,
+            new MiHome("1001", "Home", "9001", false, []),
+            CancellationToken.None);
+
+        Assert.Equal(new int?[] { 7, 8, null }, devices.Select(device => device.SubclassId));
+        Assert.All(devices, device => Assert.Null(device.SubclassCategory));
+    }
+
+    [Fact]
+    public async Task GetSwitchSubclassesAsyncParsesListAndSkipsIncompleteEntries()
+    {
+        const string response = """
+            {"code":0,"result":{"list":[
+            {"id":7,"chinese_name":"吸顶灯","category_id":12,"plugin_type":"light"},
+            {"id":8,"english_name":"Socket","category_id":9,"plugin_type":"socket"},
+            {"id":9,"chinese_name":"","english_name":"","category_id":2},
+            {"id":10,"chinese_name":"No Category"},
+            {"chinese_name":"No Id","category_id":12}]}}
+            """;
+        var handler = new StubHttpMessageHandler(response);
+        var client = CreateClient(handler);
+
+        var entries = await client.GetSwitchSubclassesAsync(_session, CancellationToken.None);
+
+        Assert.Equal(
+            [new SwitchSubclass(7, "吸顶灯", 12), new SwitchSubclass(8, "Socket", 9), new SwitchSubclass(9, "9", 2)],
+            entries);
+        Assert.Equal("{}", DecryptRequestPayload(handler));
+        Assert.Equal(new Uri("https://api.io.mi.com/app/v2/device/switch_subclass"), handler.RequestUri);
+    }
+
+    [Fact]
+    public async Task GetSwitchMembershipsAsyncParsesMemberShipKeys()
+    {
+        const string response = """
+            {"code":0,"result":{"list":[
+            {"did":"parent-1","member_ship":{
+            "1":{"subclass_id":7},
+            "2":{"subclass_id":8},
+            "3":{"subclass_id":"10"},
+            "bad":{"subclass_id":9},
+            "4":null,
+            "5":{"subclass_id":""}}},
+            {"did":"parent-2","member_ship":null},
+            {"member_ship":{"1":{"subclass_id":11}}},
+            {"did":"parent-3","member_ship":{"1":{"subclass_id":12}}}]}}
+            """;
+        var handler = new StubHttpMessageHandler(response);
+        var client = CreateClient(handler);
+
+        var memberships = await client.GetSwitchMembershipsAsync(
+            _session,
+            ["parent-1", "parent-2", "parent-3"],
+            CancellationToken.None);
+
+        Assert.Equal(2, memberships.Count);
+        Assert.Equal(3, memberships["parent-1"].Count);
+        Assert.Equal(7, memberships["parent-1"][1]);
+        Assert.Equal(8, memberships["parent-1"][2]);
+        Assert.Equal(10, memberships["parent-1"][3]);
+        Assert.False(memberships.ContainsKey("parent-2"));
+        Assert.Equal(12, memberships["parent-3"][1]);
+        Assert.Equal(
+            """{"get_sub_relation":true,"dids":["parent-1","parent-2","parent-3"]}""",
+            DecryptRequestPayload(handler));
+        Assert.Equal(new Uri("https://api.io.mi.com/app/v2/device/deviceinfo"), handler.RequestUri);
+    }
+
+    [Fact]
+    public async Task GetSwitchSubclassesAsyncThrowsWhenResultIsMissing()
+    {
+        var client = CreateClient(new StubHttpMessageHandler("""{"code":0}"""));
+
+        var error = await Assert.ThrowsAsync<MiHomeException>(() =>
+            client.GetSwitchSubclassesAsync(_session, CancellationToken.None));
+
+        Assert.Equal(MiHomeCloudClient.ProtocolErrorCode, error.Code);
+    }
+
+    [Fact]
+    public async Task GetSwitchMembershipsAsyncThrowsWhenResultIsMissing()
+    {
+        var client = CreateClient(new StubHttpMessageHandler("""{"code":0,"result":{}}"""));
+
+        var error = await Assert.ThrowsAsync<MiHomeException>(() =>
+            client.GetSwitchMembershipsAsync(_session, ["parent-1"], CancellationToken.None));
+
+        Assert.Equal(MiHomeCloudClient.ProtocolErrorCode, error.Code);
+    }
+
+    [Fact]
+    public async Task GetSwitchMembershipsAsyncAcceptsAnEmptyList()
+    {
+        var client = CreateClient(new StubHttpMessageHandler("""{"code":0,"result":{"list":[]}}"""));
+
+        var memberships = await client.GetSwitchMembershipsAsync(
+            _session,
+            ["parent-1"],
+            CancellationToken.None);
+
+        Assert.Empty(memberships);
+    }
+
+    [Fact]
+    public async Task GetSwitchMembershipsAsyncChunksLargeDeviceLists()
+    {
+        string[] dids = Enumerable.Range(0, 51).Select(index => $"did-{index}").ToArray();
+        string first = JsonSerializer.Serialize(new
+        {
+            code = 0,
+            result = new
+            {
+                list = dids.Take(50).Select(did => new
+                {
+                    did,
+                    member_ship = new Dictionary<string, object> { ["1"] = new { subclass_id = 7 } },
+                }).ToArray(),
+            },
+        });
+        string second = JsonSerializer.Serialize(new
+        {
+            code = 0,
+            result = new
+            {
+                list = new[]
+                {
+                    new
+                    {
+                        did = "did-50",
+                        member_ship = new Dictionary<string, object> { ["1"] = new { subclass_id = 8 } },
+                    },
+                },
+            },
+        });
+        var handler = new StubHttpMessageHandler([first, second]);
+        var client = CreateClient(handler);
+
+        var memberships = await client.GetSwitchMembershipsAsync(
+            _session,
+            dids,
+            CancellationToken.None);
+
+        Assert.Equal(2, handler.RequestCount);
+        Assert.Equal(51, memberships.Count);
+        Assert.Equal(7, memberships["did-0"][1]);
+        Assert.Equal(8, memberships["did-50"][1]);
+        Assert.Equal(
+            """{"get_sub_relation":true,"dids":["did-50"]}""",
+            DecryptRequestPayload(handler, index: 1));
+    }
+
+    [Fact]
     public async Task GetDevicesAsyncJoinsFirstRoomAndMatchesNumericDid()
     {
         var home = new MiHome(

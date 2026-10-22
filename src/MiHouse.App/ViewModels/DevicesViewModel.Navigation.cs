@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using MiHouse.Core.Devices;
 
 namespace MiHouse.App.ViewModels;
 
@@ -159,8 +160,13 @@ public sealed partial class DevicesViewModel
     private void RebindRoom(RoomGroup room)
     {
         ActiveRoom = room;
-        // Same instances stay put: a refresh must not rebuild the tile host.
-        SyncItems(VisibleDevices, room.ToArray());
+        // Same instances stay put: a refresh must not rebuild the tile host. A plain room view
+        // hides switch parents whose channels are listed as their own rows; the class view still
+        // lists every device.
+        IReadOnlyList<DeviceRowViewModel> members = _activeClassName is null
+            ? room.Where(row => !DeviceClass.IsSplitParent(row.Device, _splitParentDids)).ToArray()
+            : room.ToArray();
+        SyncItems(VisibleDevices, members);
 
         CurrentPage = ShellPageKind.Room;
         OnPropertyChanged(nameof(IsRoomEmpty));

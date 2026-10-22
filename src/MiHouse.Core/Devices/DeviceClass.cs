@@ -51,6 +51,55 @@ public static class DeviceClass
     }
 
     /// <summary>
+    /// Maps a switch subclass catalog category id to a device category key.
+    /// </summary>
+    /// <remarks>
+    /// Only lighting (<c>12</c>) is confirmed by device behavior; every other id, whether known
+    /// (<c>2</c>, <c>3</c>, <c>4</c>, <c>5</c>, <c>7</c>, <c>11</c>, <c>16</c>) or not, falls
+    /// back to <c>other</c> so it is never presented as a more precise device kind.
+    /// </remarks>
+    /// <returns>The category key for <paramref name="categoryId"/>.</returns>
+    public static string? FromSubclassCategory(int categoryId)
+    {
+        return categoryId switch
+        {
+            12 => "light",
+            _ => "other",
+        };
+    }
+
+    /// <summary>
+    /// Returns the category to group <paramref name="device"/> under: a switch subclass category
+    /// resolved while the device list was assembled, then the device's own spec URN, then the
+    /// spec definition loaded for it.
+    /// </summary>
+    public static string? ResolveCategory(MiDevice device, string? specType)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+
+        return device.SubclassCategory ?? FromSpecType(device.SpecType) ?? FromSpecType(specType);
+    }
+
+    /// <summary>
+    /// True when <paramref name="device"/> is a switch whose channels are listed as their own
+    /// rows. The room page hides such a parent: it controls the first channel, which already has
+    /// a row, so keeping both would duplicate that control.
+    /// </summary>
+    /// <param name="device">Device to test.</param>
+    /// <param name="splitParentDids">
+    /// Parent device ids that have at least one split sub-device in the current device list.
+    /// </param>
+    public static bool IsSplitParent(MiDevice device, IReadOnlySet<string> splitParentDids)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        ArgumentNullException.ThrowIfNull(splitParentDids);
+
+        return device.ParentDid is null
+            && string.Equals(FromSpecType(device.SpecType), "switch", StringComparison.Ordinal)
+            && splitParentDids.Contains(device.Did);
+    }
+
+    /// <summary>
     /// Returns the Chinese label shown for a device category.
     /// </summary>
     /// <returns>

@@ -149,4 +149,58 @@ public sealed class DeviceClassTests
         Assert.True(DeviceClass.SortOrder("toaster") > DeviceClass.SortOrder("toothbrush"));
         Assert.Equal(DeviceClass.SortOrder("toaster"), DeviceClass.SortOrder("unknown"));
     }
+
+    [Theory]
+    [InlineData(12, "light")]
+    [InlineData(2, "other")]
+    [InlineData(3, "other")]
+    [InlineData(4, "other")]
+    [InlineData(5, "other")]
+    [InlineData(7, "other")]
+    [InlineData(9, "other")]
+    [InlineData(11, "other")]
+    [InlineData(16, "other")]
+    [InlineData(99, "other")]
+    public void FromSubclassCategory_MapsOnlyLighting(int categoryId, string expected)
+    {
+        Assert.Equal(expected, DeviceClass.FromSubclassCategory(categoryId));
+    }
+
+    [Fact]
+    public void ResolveCategory_PrefersSubclassThenDeviceSpecThenDefinition()
+    {
+        var classified = new MiDevice("1", "m", "D", null, true,
+            SpecType: "urn:miot-spec-v2:device:switch:0000A003:test-switch:1:0000D010",
+            SubclassCategory: "light");
+        var unclassified = classified with { SubclassCategory = null };
+
+        Assert.Equal("light", DeviceClass.ResolveCategory(
+            classified,
+            "urn:miot-spec-v2:device:fan:0000A00C:test-fan:1"));
+        Assert.Equal("switch", DeviceClass.ResolveCategory(
+            unclassified,
+            "urn:miot-spec-v2:device:fan:0000A00C:test-fan:1"));
+        Assert.Equal("fan", DeviceClass.ResolveCategory(
+            unclassified with { SpecType = null },
+            "urn:miot-spec-v2:device:fan:0000A00C:test-fan:1"));
+        Assert.Null(DeviceClass.ResolveCategory(unclassified with { SpecType = null }, null));
+    }
+
+    [Fact]
+    public void IsSplitParent_TrueOnlyForASwitchParentOfSplitRows()
+    {
+        const string switchUrn = "urn:miot-spec-v2:device:switch:0000A003:test-w3:1";
+        var parent = new MiDevice("parent", "m", "Parent", null, true, SpecType: switchUrn);
+        var channel = new MiDevice("parent.s2", "m", "Channel", null, true, "parent", 2, switchUrn);
+        var standalone = new MiDevice("standalone", "m", "Standalone", null, true, SpecType: switchUrn);
+        // A non-switch device that happens to have sub-devices keeps its own row.
+        var gateway = new MiDevice("gateway", "m", "Gateway", null, true,
+            SpecType: "urn:miot-spec-v2:device:gateway:0000A019:test-gw:1");
+        var splitParentDids = new HashSet<string>(StringComparer.Ordinal) { "parent", "gateway" };
+
+        Assert.True(DeviceClass.IsSplitParent(parent, splitParentDids));
+        Assert.False(DeviceClass.IsSplitParent(channel, splitParentDids));
+        Assert.False(DeviceClass.IsSplitParent(standalone, splitParentDids));
+        Assert.False(DeviceClass.IsSplitParent(gateway, splitParentDids));
+    }
 }

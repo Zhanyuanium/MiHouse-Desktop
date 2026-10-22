@@ -19,6 +19,8 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
     private const string _homesPayload =
         """{"limit":300,"fetch_share":true,"fetch_share_dev":true,"fetch_cariot":true,"plat_form":0,"app_ver":9,"fg":true}""";
     private const string _homeDeviceListPath = "v2/home/home_device_list";
+    private const string _switchSubclassPath = "v2/device/switch_subclass";
+    private const string _deviceInfoPath = "v2/device/deviceinfo";
     private const string _sceneListPath =
         "appgateway/miot/appsceneservice/AppSceneService/GetSimpleSceneList";
     private const string _runScenePath =
@@ -139,6 +141,131 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
         }
 
         return devices;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<SwitchSubclass>> GetSwitchSubclassesAsync(
+        MiHomeSession session,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        var response = await PostAsync(session, _switchSubclassPath, "{}", cancellationToken)
+            .ConfigureAwait(false);
+        EnsureSuccess(response, _switchSubclassPath);
+
+        if (!TryGetResultList(response, out var list))
+        {
+            // An empty catalog would erase every known switch classification, so a response
+            // without a recognizable list is a protocol error, not an empty catalog.
+            throw ProtocolError(_switchSubclassPath, "the response has no subclass catalog list.");
+        }
+
+        var entries = new List<SwitchSubclass>(list.GetArrayLength());
+        foreach (var item in list.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var id = ReadInt32(item, "id");
+            var categoryId = ReadInt32(item, "category_id");
+            if (id is null || categoryId is null)
+            {
+                continue;
+            }
+
+            var name = ReadString(item, "chinese_name");
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                name = ReadString(item, "english_name");
+            }
+
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                name = id.Value.ToString(CultureInfo.InvariantCulture);
+            }
+
+            entries.Add(new SwitchSubclass(id.Value, name, categoryId.Value));
+        }
+
+        return entries;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<string, IReadOnlyDictionary<int, int>>> GetSwitchMembershipsAsync(
+        MiHomeSession session,
+        IReadOnlyList<string> parentDids,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(parentDids);
+
+        var memberships = new Dictionary<string, IReadOnlyDictionary<int, int>>(StringComparer.Ordinal);
+        if (parentDids.Count == 0)
+        {
+            return memberships;
+        }
+
+        // The endpoint accepts a bounded device list per request; a large home needs several.
+        const int chunkSize = 50;
+        for (var offset = 0; offset < parentDids.Count; offset += chunkSize)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var chunk = parentDids.Skip(offset).Take(chunkSize).ToArray();
+            var payload = JsonSerializer.Serialize(new { get_sub_relation = true, dids = chunk });
+            var response = await PostAsync(session, _deviceInfoPath, payload, cancellationToken)
+                .ConfigureAwait(false);
+            EnsureSuccess(response, _deviceInfoPath);
+
+            if (!TryGetResultList(response, out var list))
+            {
+                // A missing list is a protocol failure, not an empty membership: treating it as
+                // success would let the classifier clear categories it already has.
+                throw ProtocolError(_deviceInfoPath, "the response has no device list.");
+            }
+
+            foreach (var item in list.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                var did = ReadIdentifier(item, "did");
+                if (string.IsNullOrEmpty(did)
+                    || !item.TryGetProperty("member_ship", out var membership)
+                    || membership.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                var channels = new Dictionary<int, int>();
+                foreach (var member in membership.EnumerateObject())
+                {
+                    if (!int.TryParse(
+                            member.Name,
+                            NumberStyles.Integer,
+                            CultureInfo.InvariantCulture,
+                            out var index)
+                        || member.Value.ValueKind != JsonValueKind.Object
+                        || ReadInt32(member.Value, "subclass_id") is not { } subclassId)
+                    {
+                        continue;
+                    }
+
+                    channels[index] = subclassId;
+                }
+
+                if (channels.Count > 0)
+                {
+                    memberships[did] = channels;
+                }
+            }
+        }
+
+        return memberships;
     }
 
     /// <inheritdoc />
@@ -628,7 +755,8 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
                 channelSiid,
                 specType,
                 localIp,
-                splitMetadataIncomplete));
+                splitMetadataIncomplete,
+                ReadInt32(item, "subclass_id")));
         }
     }
 
@@ -739,6 +867,40 @@ public sealed class MiHomeCloudClient : IMiHomeCloudClient
         }
 
         return values;
+    }
+
+    private static bool TryGetResultList(JsonElement response, out JsonElement list)
+    {
+        list = default;
+
+        // Most endpoints answer `result.list`; a few return the array at `result` or bare.
+        if (response.ValueKind == JsonValueKind.Array)
+        {
+            list = response;
+            return true;
+        }
+
+        if (response.ValueKind != JsonValueKind.Object
+            || !response.TryGetProperty("result", out var result))
+        {
+            return false;
+        }
+
+        if (result.ValueKind == JsonValueKind.Array)
+        {
+            list = result;
+            return true;
+        }
+
+        if (result.ValueKind == JsonValueKind.Object
+            && result.TryGetProperty("list", out var nested)
+            && nested.ValueKind == JsonValueKind.Array)
+        {
+            list = nested;
+            return true;
+        }
+
+        return false;
     }
 
     private static JsonElement ParseActionResult(JsonElement response, string path)

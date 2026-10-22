@@ -27,10 +27,11 @@ public sealed partial class MainWindow : Window
     private readonly IDeviceSecretStore _secrets;
     private readonly ILanTransport _lan;
     private readonly SnapshotStore _snapshots;
+    private readonly DeviceClassification _classification;
 
     public MainWindow(ILogger<MainWindow> logger, IAuthService auth, ICredentialStore credentials,
         IMiHomeCloudClient cloud, ISpecCatalog specs, IDeviceSecretStore secrets, ILanTransport lan,
-        SnapshotStore snapshots)
+        SnapshotStore snapshots, DeviceClassification classification)
     {
         _auth = auth;
         _credentials = credentials;
@@ -39,6 +40,7 @@ public sealed partial class MainWindow : Window
         _secrets = secrets;
         _lan = lan;
         _snapshots = snapshots;
+        _classification = classification;
         InitializeComponent();
         Title = AppResources.DisplayName;
         ExtendsContentIntoTitleBar = true;
@@ -104,7 +106,7 @@ public sealed partial class MainWindow : Window
     {
         StopCurrentPage();
         var controller = new DeviceController(_cloud, _specs, session, _lan, _secrets);
-        var viewModel = new DevicesViewModel(_cloud, controller, _credentials, session, _snapshots);
+        var viewModel = new DevicesViewModel(_cloud, controller, _credentials, session, _snapshots, _classification);
         WindowTitleBar.DataContext = viewModel;
         HomeSwitcher.Visibility = Visibility.Visible;
         WindowTitleBar.IsPaneToggleButtonVisible = true;
