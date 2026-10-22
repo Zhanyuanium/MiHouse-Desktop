@@ -6,8 +6,8 @@ using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using MiHouse.App.Appearance;
 using MiHouse.App.ViewModels;
-using Windows.UI.ViewManagement;
 
 namespace MiHouse.App.Views;
 
@@ -98,7 +98,7 @@ public sealed partial class DeviceTile : UserControl
     {
         var visual = ElementCompositionPreview.GetElementVisual(HoverOverlay);
         visual.StopAnimation("Opacity");
-        if (!new UISettings().AnimationsEnabled) { visual.Opacity = opacity; return; }
+        if (!AppMotion.IsEnabled) { visual.Opacity = opacity; return; }
         var animation = visual.Compositor.CreateScalarKeyFrameAnimation();
         animation.Duration = TimeSpan.FromMilliseconds(120);
         animation.InsertKeyFrame(1, opacity);

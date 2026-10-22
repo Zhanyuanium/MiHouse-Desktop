@@ -3,13 +3,12 @@ using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
-using Windows.UI.ViewManagement;
+using MiHouse.App.Appearance;
 
 namespace MiHouse.App.Views;
 
 public sealed partial class RefreshGlyph : UserControl
 {
-    private readonly UISettings _settings = new();
     public static readonly DependencyProperty IsBusyProperty = DependencyProperty.Register(nameof(IsBusy), typeof(bool), typeof(RefreshGlyph),
         new PropertyMetadata(false, (sender, _) => ((RefreshGlyph)sender).UpdateRotation()));
     public RefreshGlyph() => InitializeComponent();
@@ -20,7 +19,7 @@ public sealed partial class RefreshGlyph : UserControl
         var visual = ElementCompositionPreview.GetElementVisual(Glyph);
         visual.StopAnimation("RotationAngleInDegrees");
         visual.RotationAngleInDegrees = 0;
-        if (!IsLoaded || !IsBusy || !_settings.AnimationsEnabled) { return; }
+        if (!IsLoaded || !IsBusy || !AppMotion.IsEnabled) { return; }
         visual.CenterPoint = new Vector3(8, 8, 0);
         var animation = visual.Compositor.CreateScalarKeyFrameAnimation();
         animation.Duration = TimeSpan.FromSeconds(1);
@@ -31,15 +30,15 @@ public sealed partial class RefreshGlyph : UserControl
     }
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        _settings.AnimationsEnabledChanged += OnAnimationsChanged;
+        AppMotion.Changed += OnMotionChanged;
         UpdateRotation();
     }
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        _settings.AnimationsEnabledChanged -= OnAnimationsChanged;
+        AppMotion.Changed -= OnMotionChanged;
         var visual = ElementCompositionPreview.GetElementVisual(Glyph);
         visual.StopAnimation("RotationAngleInDegrees");
         visual.RotationAngleInDegrees = 0;
     }
-    private void OnAnimationsChanged(UISettings sender, object args) => DispatcherQueue.TryEnqueue(UpdateRotation);
+    private void OnMotionChanged() => DispatcherQueue.TryEnqueue(UpdateRotation);
 }

@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 using MiHouse.Core.Auth;
 using MiHouse.Core.Devices;
 using MiHouse.Core.Session;
+using MiHouse.Core.Settings;
 using MiHouse.Core.Spec;
 
 namespace MiHouse.App.ViewModels;
@@ -119,7 +120,8 @@ public sealed partial class DevicesViewModel : ObservableObject
     public partial DeviceRowViewModel? SelectedDevice { get; set; }
 
     public DevicesViewModel(IMiHomeCloudClient cloud, IDeviceController controller, ICredentialStore credentials,
-        MiHomeSession session, SnapshotStore snapshots, DeviceClassification classification)
+        MiHomeSession session, SnapshotStore snapshots, DeviceClassification classification,
+        AppearanceSettings appearance)
     {
         _cloud = cloud;
         _controller = controller;
@@ -127,6 +129,7 @@ public sealed partial class DevicesViewModel : ObservableObject
         _session = session;
         _snapshots = snapshots;
         _classification = classification;
+        Appearance = appearance;
         _userId = long.TryParse(session.UserId, NumberStyles.None, CultureInfo.InvariantCulture, out long userId)
             ? userId
             : null;
@@ -146,6 +149,7 @@ public sealed partial class DevicesViewModel : ObservableObject
     internal Func<ActionRowViewModel, CancellationToken, Task<bool>>? ConfirmAction { get; set; }
     internal Func<SceneRowViewModel, CancellationToken, Task<bool>>? ConfirmScene { get; set; }
     public ScenesViewModel ScenePanel { get; }
+    public AppearanceSettings Appearance { get; }
     public bool IsRefreshBusy => IsBusy || ScenePanel.IsBusy;
     public ObservableCollection<HomeRowViewModel> Homes { get; } = [];
     public ObservableCollection<RoomGroup> Rooms { get; } = [];

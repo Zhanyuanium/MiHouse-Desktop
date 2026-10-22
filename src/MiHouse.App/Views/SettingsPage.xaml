@@ -6,6 +6,15 @@
       <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}" />
       <Setter Property="Margin" Value="8,0,0,0" />
     </Style>
+    <Style x:Key="AccentSwatchButtonStyle" TargetType="Button">
+      <Setter Property="Padding" Value="0" /><Setter Property="MinWidth" Value="0" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+        <Border x:Name="SwatchSurface" Width="28" Height="28" CornerRadius="8"
+          Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+          BorderThickness="{TemplateBinding BorderThickness}" />
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
   </Page.Resources>
   <views:PageLayout Heading="设置" Subtitle="账号、家庭与使用偏好">
     <views:PageLayout.Body>
@@ -24,10 +33,48 @@
           </views:SettingsCard>
         </StackPanel>
         <StackPanel Spacing="10">
-          <TextBlock Text="体验与偏好" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="4,0,0,2" />
-          <views:SettingsCard Header="界面与光效" Description="跟随 Windows 主题、强调色与动画设置" Glyph="&#xE790;">
-            <views:SettingsCard.Trailing><TextBlock Text="跟随系统" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></views:SettingsCard.Trailing>
+          <TextBlock Text="外观" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="4,0,0,2" />
+          <views:SettingsCard Header="深浅模式" Description="跟随系统、浅色或深色" Glyph="&#xE708;">
+            <views:SettingsCard.Trailing>
+              <RadioButtons x:Name="ThemeModeSelector" MaxColumns="3" SelectionChanged="OnThemeModeChanged">
+                <x:String>跟随系统</x:String><x:String>浅色</x:String><x:String>深色</x:String>
+              </RadioButtons>
+            </views:SettingsCard.Trailing>
           </views:SettingsCard>
+          <views:SettingsCard Header="主题色" Description="应用内彩色控件与设备图标使用的强调色" Glyph="&#xE790;">
+            <views:SettingsCard.Trailing>
+              <StackPanel x:Name="AccentControls" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                <RadioButtons x:Name="AccentSourceSelector" MaxColumns="2" SelectionChanged="OnAccentSourceChanged">
+                  <x:String>系统强调色</x:String><x:String>自定义</x:String>
+                </RadioButtons>
+                <Button x:Name="AccentSwatchButton" Style="{StaticResource AccentSwatchButtonStyle}" Background="{StaticResource AppAccentBrush}"
+                  BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}"
+                  AutomationProperties.Name="自定义主题色" ToolTipService.ToolTip="选择自定义主题色">
+                  <Button.Flyout>
+                    <Flyout>
+                      <ColorPicker x:Name="AccentPicker" IsAlphaEnabled="False" IsColorChannelTextInputVisible="False"
+                        IsHexInputVisible="True" ColorSpectrumShape="Ring" ColorChanged="OnAccentColorChanged" />
+                    </Flyout>
+                  </Button.Flyout>
+                </Button>
+              </StackPanel>
+            </views:SettingsCard.Trailing>
+          </views:SettingsCard>
+          <views:SettingsCard Header="彩色图标" Description="设备图标使用主题色，关闭后转为中性色" Glyph="&#xE7C6;">
+            <views:SettingsCard.Trailing>
+              <ToggleSwitch IsOn="{Binding Appearance.UseColoredIcons, Mode=TwoWay}" OnContent="彩色" OffContent="中性"
+                AutomationProperties.Name="设备图标使用主题色" />
+            </views:SettingsCard.Trailing>
+          </views:SettingsCard>
+          <views:SettingsCard Header="动效" Description="关闭后停止自绘动效与加载动画，保留静态状态提示" Glyph="&#xE768;">
+            <views:SettingsCard.Trailing>
+              <ToggleSwitch IsOn="{Binding Appearance.AnimationsEnabled, Mode=TwoWay}" OnContent="开" OffContent="关"
+                AutomationProperties.Name="启用动效" />
+            </views:SettingsCard.Trailing>
+          </views:SettingsCard>
+        </StackPanel>
+        <StackPanel Spacing="10">
+          <TextBlock Text="体验与偏好" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="4,0,0,2" />
           <views:SettingsCard Header="通知" Description="管理本机操作结果与提醒" Glyph="&#xE7F4;">
             <views:SettingsCard.Trailing><TextBlock Style="{StaticResource PlannedTag}" /></views:SettingsCard.Trailing>
           </views:SettingsCard>

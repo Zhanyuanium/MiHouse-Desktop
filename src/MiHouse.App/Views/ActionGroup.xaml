@@ -1,4 +1,4 @@
-<UserControl x:Class="MiHouse.App.Views.ActionGroup" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:spec="using:MiHouse.Core.Spec">
+<UserControl x:Class="MiHouse.App.Views.ActionGroup" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:appearance="using:MiHouse.App.Appearance" xmlns:spec="using:MiHouse.Core.Spec">
  <StackPanel Spacing="8" Margin="0,12,0,0">
   <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
   <ItemsControl ItemsSource="{Binding Actions}" HorizontalContentAlignment="Stretch"><ItemsControl.ItemTemplate><DataTemplate>
@@ -17,7 +17,7 @@
      </StackPanel></DataTemplate></ItemsControl.ItemTemplate>
     </ItemsControl>
     <Button Content="{Binding ButtonLabel}" Command="{Binding InvokeCommand}" AutomationProperties.Name="{Binding AccessibleName}" />
-    <ProgressBar IsIndeterminate="True" Visibility="{Binding IsBusy, Converter={StaticResource BooleanVisibilityConverter}}" />
+    <ProgressBar appearance:MotionGate.Indeterminate="True" Visibility="{Binding IsBusy, Converter={StaticResource BooleanVisibilityConverter}}" />
     <TextBlock Text="{Binding Output}" Style="{StaticResource SecondaryTextStyle}" Visibility="{Binding HasOutput, Converter={StaticResource BooleanVisibilityConverter}}" />
     <InfoBar Severity="Error" IsClosable="False" IsOpen="{Binding Error, Converter={StaticResource HasTextConverter}}" Visibility="{Binding HasError, Converter={StaticResource BooleanVisibilityConverter}}" Message="{Binding Error}" />
    </StackPanel></Border>

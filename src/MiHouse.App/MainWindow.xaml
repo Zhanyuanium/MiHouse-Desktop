@@ -7,7 +7,7 @@
   <Window.SystemBackdrop>
     <MicaBackdrop />
   </Window.SystemBackdrop>
-  <Grid Background="Transparent">
+  <Grid x:Name="RootGrid" Background="Transparent">
     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
     <TitleBar x:Name="WindowTitleBar" Height="48" BorderThickness="0" Background="Transparent" IsBackButtonVisible="False" PaneToggleRequested="OnTitleBarPaneToggleRequested">
       <TitleBar.Resources><x:Double x:Key="TitleBarMinDragRegionWidth">0</x:Double></TitleBar.Resources>

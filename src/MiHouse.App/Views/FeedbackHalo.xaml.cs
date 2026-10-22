@@ -2,14 +2,14 @@ using System.Numerics;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
-using Windows.UI.ViewManagement;
+using Microsoft.UI.Xaml.Media;
+using MiHouse.App.Appearance;
 
 namespace MiHouse.App.Views;
 
 public sealed partial class FeedbackHalo : UserControl
 {
     private const float _steadyOpacity = 0.13f;
-    private readonly UISettings _settings = new();
     private bool _animateChanges = true;
     public static readonly DependencyProperty LevelProperty = DependencyProperty.Register(nameof(Level), typeof(double), typeof(FeedbackHalo),
         new PropertyMetadata(0d, (sender, _) => { var halo = (FeedbackHalo)sender; halo.ApplyLevel(halo._animateChanges && halo.IsLoaded); }));
@@ -34,7 +34,7 @@ public sealed partial class FeedbackHalo : UserControl
         var visual = ElementCompositionPreview.GetElementVisual(Tint);
         float target = (float)Math.Clamp(Level, 0, 1) * _steadyOpacity;
         visual.StopAnimation("Opacity");
-        if (!animate || !_settings.AnimationsEnabled) { visual.Opacity = target; return; }
+        if (!animate || !AppMotion.IsEnabled) { visual.Opacity = target; return; }
         var animation = visual.Compositor.CreateScalarKeyFrameAnimation();
         animation.Duration = TimeSpan.FromMilliseconds(120);
         animation.InsertKeyFrame(1, target, visual.Compositor.CreateCubicBezierEasingFunction(new Vector2(0, 0), new Vector2(0.2f, 1)));
@@ -42,7 +42,7 @@ public sealed partial class FeedbackHalo : UserControl
     }
     private void Burst()
     {
-        if (!_settings.AnimationsEnabled) { ApplyLevel(false); return; }
+        if (!AppMotion.IsEnabled) { ApplyLevel(false); return; }
         var visual = ElementCompositionPreview.GetElementVisual(Tint);
         visual.StopAnimation("Opacity");
         var animation = visual.Compositor.CreateScalarKeyFrameAnimation();
@@ -55,15 +55,28 @@ public sealed partial class FeedbackHalo : UserControl
     }
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        _settings.AnimationsEnabledChanged += OnAnimationsChanged;
+        AppMotion.Changed += OnMotionChanged;
+        AppearanceService.AccentApplied += OnAccentApplied;
+        SyncAccent();
         ApplyLevel(false);
     }
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        _settings.AnimationsEnabledChanged -= OnAnimationsChanged;
+        AppMotion.Changed -= OnMotionChanged;
+        AppearanceService.AccentApplied -= OnAccentApplied;
         var visual = ElementCompositionPreview.GetElementVisual(Tint);
         visual.StopAnimation("Opacity");
         visual.Opacity = 0;
     }
-    private void OnAnimationsChanged(UISettings sender, object args) => DispatcherQueue.TryEnqueue(() => { if (IsLoaded) { ApplyLevel(false); } });
+    private void OnMotionChanged() => DispatcherQueue.TryEnqueue(() => { if (IsLoaded) { ApplyLevel(false); } });
+    private void OnAccentApplied() => DispatcherQueue.TryEnqueue(SyncAccent);
+    private void SyncAccent()
+    {
+        if (AccentStop is null || Application.Current.Resources["AppAccentBrush"] is not SolidColorBrush brush)
+        {
+            return;
+        }
+
+        AccentStop.Color = brush.Color;
+    }
 }

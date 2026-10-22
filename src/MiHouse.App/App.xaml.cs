@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
+using MiHouse.App.Appearance;
 using MiHouse.App.Diagnostics;
 using MiHouse.App.Security;
 using MiHouse.App.Storage;
@@ -8,6 +9,7 @@ using MiHouse.Core.Auth;
 using MiHouse.Core.Cloud;
 using MiHouse.Core.Devices;
 using MiHouse.Core.Lan;
+using MiHouse.Core.Settings;
 using MiHouse.Core.Spec;
 
 namespace MiHouse.App;
@@ -19,6 +21,9 @@ public partial class App : Application
 {
     private const string _userAgent =
         "Android-7.1.1-1.0.0-ONEPLUS A3010-136-ABCDEF1234567 APP/xiaomi.smarthome APPV/62830";
+
+    private readonly AppearanceSettings _appearance;
+    private readonly AppearanceStore _appearanceStore;
 
     private Window? _window;
 
@@ -32,8 +37,14 @@ public partial class App : Application
 
         CrashLog.Prune();
 
+        _appearanceStore = new AppearanceStore(AppStorage.Current.StateDirectory);
+        _appearance = _appearanceStore.Load();
+        AppMotion.Initialize(_appearance);
+        HighContrast.Initialize();
+
         InitializeComponent();
-        Services = ConfigureServices();
+        Services = ConfigureServices(_appearance, _appearanceStore);
+        _appearance.Changed += (_, _) => _appearanceStore.Save(_appearance);
     }
 
     /// <summary>
@@ -43,6 +54,7 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        Services.GetRequiredService<AppearanceService>().Initialize(Application.Current.Resources);
         _window = Services.GetRequiredService<MainWindow>();
         _window.Activate();
     }
@@ -74,7 +86,9 @@ public partial class App : Application
         CrashLog.Write("TaskScheduler.UnobservedTaskException", handled: false, args.Exception);
     }
 
-    private static ServiceProvider ConfigureServices()
+    private static ServiceProvider ConfigureServices(
+        AppearanceSettings appearance,
+        AppearanceStore appearanceStore)
     {
         var services = new ServiceCollection();
 
@@ -115,6 +129,9 @@ public partial class App : Application
                 provider.GetRequiredService<IMiHomeCloudClient>(),
                 provider.GetRequiredService<SwitchSubclassCatalog>()));
 
+        services.AddSingleton(appearance);
+        services.AddSingleton(appearanceStore);
+        services.AddSingleton<AppearanceService>();
         services.AddSingleton<MainWindow>();
 
         return services.BuildServiceProvider();

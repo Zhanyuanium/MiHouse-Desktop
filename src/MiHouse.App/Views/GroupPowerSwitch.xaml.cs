@@ -31,7 +31,7 @@ public sealed partial class GroupPowerSwitch : UserControl
         LitTrack.Width = State == GroupPowerState.Partial ? 24 : 48;
         LitTrack.HorizontalAlignment = HorizontalAlignment.Left;
         LitTrack.Opacity = State == GroupPowerState.On ? 1 : State == GroupPowerState.Partial ? 0.5 : 0;
-        Knob.Fill = (Brush)Application.Current.Resources[State == GroupPowerState.On ? "TextOnAccentFillColorPrimaryBrush" : "TextFillColorSecondaryBrush"];
+        Knob.Fill = (Brush)Application.Current.Resources[State == GroupPowerState.On ? "AppOnAccentBrush" : "TextFillColorSecondaryBrush"];
         AutomationProperties.SetItemStatus(this, State switch { GroupPowerState.On => "全部开启", GroupPowerState.Off => "全部关闭", GroupPowerState.Partial => "部分开启", _ => "状态未知" });
         ToolTipService.SetToolTip(this, "向左拖动全部关闭，向右拖动全部开启；离线或不可控设备将跳过并提示");
     }

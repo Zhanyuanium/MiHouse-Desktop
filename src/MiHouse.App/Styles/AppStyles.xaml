@@ -1,6 +1,7 @@
 <ResourceDictionary
   xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
   xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  xmlns:appearance="using:MiHouse.App.Appearance"
   xmlns:views="using:MiHouse.App.Views">
   <ResourceDictionary.ThemeDictionaries>
     <ResourceDictionary x:Key="Dark">
@@ -18,7 +19,35 @@
   <views:RoomSelectionBrushConverter x:Key="RoomSelectionBrushConverter" />
   <views:RoomPillBrushConverter x:Key="RoomPillBrushConverter" />
   <views:DeviceIconConverter x:Key="DeviceIconConverter" />
-  <SolidColorBrush x:Key="MonogramTintBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.12" />
+  <!--
+    Mutable accent brushes. AppearanceService recolors these in place (Color/Opacity) so every
+    StaticResource holder repaints immediately; do not switch these to ThemeResource.
+  -->
+  <SolidColorBrush x:Key="AppAccentBrush" Color="#0078D4" />
+  <SolidColorBrush x:Key="AppAccentSubtleBrush" Color="#0078D4" Opacity="0.12" />
+  <SolidColorBrush x:Key="AppOnAccentBrush" Color="#FFFFFF" />
+  <SolidColorBrush x:Key="DeviceIconBrush" Color="#0078D4" />
+  <SolidColorBrush x:Key="DeviceIconBackdropBrush" Color="#0078D4" Opacity="0.12" />
+  <!--
+    System accent keys overridden so built-in controls (NavigationView, ToggleSwitch, ProgressRing,
+    accent buttons) follow the app accent. The brushes are mutated in place; the color keys below
+    are replaced on change.
+  -->
+  <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#0078D4" />
+  <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#0078D4" Opacity="0.9" />
+  <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#0078D4" Opacity="0.8" />
+  <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#FFFFFF" />
+  <SolidColorBrush x:Key="TextOnAccentFillColorSecondaryBrush" Color="#FFFFFF" Opacity="0.7" />
+  <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#0078D4" />
+  <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#429CE3" />
+  <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#76B9ED" />
+  <Color x:Key="SystemAccentColor">#FF0078D4</Color>
+  <Color x:Key="SystemAccentColorLight1">#FF429CE3</Color>
+  <Color x:Key="SystemAccentColorLight2">#FF76B9ED</Color>
+  <Color x:Key="SystemAccentColorLight3">#FFA6D4F5</Color>
+  <Color x:Key="SystemAccentColorDark1">#FF005A9E</Color>
+  <Color x:Key="SystemAccentColorDark2">#FF004578</Color>
+  <Color x:Key="SystemAccentColorDark3">#FF00263B</Color>
   <Style x:Key="SecondaryTextStyle" TargetType="TextBlock" BasedOn="{StaticResource BodyTextBlockStyle}">
     <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
     <Setter Property="TextWrapping" Value="Wrap" />
@@ -67,11 +96,11 @@
        <Grid ColumnSpacing="12" VerticalAlignment="Center" Padding="{StaticResource DashboardCardPadding}">
         <Grid.ColumnDefinitions><ColumnDefinition Width="40" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-        <Border Width="40" Height="40" CornerRadius="12" Background="{ThemeResource MonogramTintBrush}" VerticalAlignment="Center">
+        <Border Width="40" Height="40" CornerRadius="12" Background="{StaticResource DeviceIconBackdropBrush}" VerticalAlignment="Center">
           <Grid>
-            <FontIcon Glyph="&#xE945;" FontSize="20" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+            <FontIcon Glyph="&#xE945;" FontSize="20" Foreground="{StaticResource DeviceIconBrush}"
               Visibility="{Binding IsBusy, Converter={StaticResource BooleanVisibilityConverter}, ConverterParameter=Inverse}" />
-            <ProgressRing Width="16" Height="16" MinWidth="16" MinHeight="16" IsActive="{Binding IsBusy}"
+            <ProgressRing Width="16" Height="16" MinWidth="16" MinHeight="16" appearance:MotionGate.Active="{Binding IsBusy}"
               Visibility="{Binding IsBusy, Converter={StaticResource BooleanVisibilityConverter}}" AutomationProperties.Name="正在执行场景" />
           </Grid>
         </Border>
@@ -107,10 +136,10 @@
           <VisualStateGroup x:Name="ToggleStates">
             <VisualState x:Name="Off" />
             <VisualState x:Name="On"><VisualState.Setters>
-              <Setter Target="SwitchKnobBounds.Fill" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+              <Setter Target="SwitchKnobBounds.Fill" Value="{StaticResource AppAccentBrush}" />
               <Setter Target="SwitchKnobBounds.StrokeThickness" Value="0" />
               <Setter Target="KnobTranslateTransform.X" Value="20" />
-              <Setter Target="Knob.Fill" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+              <Setter Target="Knob.Fill" Value="{StaticResource AppOnAccentBrush}" />
             </VisualState.Setters></VisualState>
           </VisualStateGroup>
         </VisualStateManager.VisualStateGroups>

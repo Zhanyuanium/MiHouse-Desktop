@@ -3,7 +3,7 @@
   Loaded="OnLoaded" Unloaded="OnUnloaded" AutomationProperties.AccessibilityView="Raw">
   <Border x:Name="Tint" CornerRadius="{ThemeResource ControlCornerRadius}">
     <Border.Background><LinearGradientBrush StartPoint="1,1" EndPoint="0,0">
-      <GradientStop Color="{ThemeResource SystemAccentColor}" Offset="0" /><GradientStop Color="Transparent" Offset="0.9" />
+      <GradientStop x:Name="AccentStop" Offset="0" /><GradientStop Color="Transparent" Offset="0.9" />
     </LinearGradientBrush></Border.Background>
   </Border>
 </UserControl>

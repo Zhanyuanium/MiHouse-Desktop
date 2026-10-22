@@ -4,12 +4,14 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using MiHouse.App.Appearance;
 using MiHouse.App.ViewModels;
 using MiHouse.App.Views;
 using MiHouse.Core.Auth;
 using MiHouse.Core.Devices;
 using MiHouse.Core.Lan;
 using MiHouse.Core.Session;
+using MiHouse.Core.Settings;
 using MiHouse.Core.Spec;
 using Windows.Graphics;
 
@@ -28,10 +30,13 @@ public sealed partial class MainWindow : Window
     private readonly ILanTransport _lan;
     private readonly SnapshotStore _snapshots;
     private readonly DeviceClassification _classification;
+    private readonly AppearanceSettings _appearance;
+    private readonly AppearanceService _appearanceService;
 
     public MainWindow(ILogger<MainWindow> logger, IAuthService auth, ICredentialStore credentials,
         IMiHomeCloudClient cloud, ISpecCatalog specs, IDeviceSecretStore secrets, ILanTransport lan,
-        SnapshotStore snapshots, DeviceClassification classification)
+        SnapshotStore snapshots, DeviceClassification classification, AppearanceSettings appearance,
+        AppearanceService appearanceService)
     {
         _auth = auth;
         _credentials = credentials;
@@ -41,6 +46,8 @@ public sealed partial class MainWindow : Window
         _lan = lan;
         _snapshots = snapshots;
         _classification = classification;
+        _appearance = appearance;
+        _appearanceService = appearanceService;
         InitializeComponent();
         Title = AppResources.DisplayName;
         ExtendsContentIntoTitleBar = true;
@@ -55,8 +62,7 @@ public sealed partial class MainWindow : Window
         HomeSwitcher.SizeChanged += (_, _) => UpdateTitleBarNavigation();
         AppWindow.Changed += (_, _) => DispatcherQueue.TryEnqueue(UpdateTitleBarInset);
         AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
-        AppWindow.TitleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
-        AppWindow.TitleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
+        _appearanceService.Attach(this);
         SizeToDefaultLogicalSize();
         Closed += OnClosed;
         ShowLogin();
@@ -106,7 +112,7 @@ public sealed partial class MainWindow : Window
     {
         StopCurrentPage();
         var controller = new DeviceController(_cloud, _specs, session, _lan, _secrets);
-        var viewModel = new DevicesViewModel(_cloud, controller, _credentials, session, _snapshots, _classification);
+        var viewModel = new DevicesViewModel(_cloud, controller, _credentials, session, _snapshots, _classification, _appearance);
         WindowTitleBar.DataContext = viewModel;
         HomeSwitcher.Visibility = Visibility.Visible;
         WindowTitleBar.IsPaneToggleButtonVisible = true;
@@ -172,6 +178,12 @@ public sealed partial class MainWindow : Window
     }
 
     private void OnClosed(object sender, WindowEventArgs args) => StopCurrentPage();
+
+    /// <summary>
+    /// The window's root layout element. Its <see cref="FrameworkElement.RequestedTheme"/> drives
+    /// runtime theme switching for the whole window subtree.
+    /// </summary>
+    internal Grid Root => RootGrid;
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);

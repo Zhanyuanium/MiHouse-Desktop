@@ -2,6 +2,7 @@
   x:Class="MiHouse.App.Views.LoginPage"
   xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
   xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  xmlns:appearance="using:MiHouse.App.Appearance"
   Background="{ThemeResource LayerFillColorDefaultBrush}"
   Loaded="OnLoaded" Unloaded="OnUnloaded" KeyDown="OnKeyDown">
   <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Stretch">
@@ -23,13 +24,13 @@
                 <FontIcon Glyph="&#xED14;" FontSize="48" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
                 <TextBlock Text="米家 App 扫码登录" Style="{StaticResource SecondaryTextStyle}" />
               </StackPanel>
-              <ProgressRing Width="40" Height="40" IsActive="{Binding IsBusy}"
+              <ProgressRing Width="40" Height="40" appearance:MotionGate.Active="{Binding IsBusy}"
                 Visibility="{Binding IsBusy, Converter={StaticResource BooleanVisibilityConverter}}"
                 AutomationProperties.Name="正在生成二维码" />
               <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="8" Padding="8" CornerRadius="16"
                 Background="{ThemeResource LayerFillColorDefaultBrush}"
                 Visibility="{Binding IsPolling, Converter={StaticResource BooleanVisibilityConverter}}">
-                <ProgressRing Width="20" Height="20" IsActive="{Binding IsPolling}" AutomationProperties.Name="等待扫码确认" />
+                <ProgressRing Width="20" Height="20" appearance:MotionGate.Active="{Binding IsPolling}" AutomationProperties.Name="等待扫码确认" />
               </Border>
             </Grid>
           </Button>
@@ -45,7 +46,7 @@
             AutomationProperties.Name="小米账号密码" />
           <Button Content="登录" Command="{Binding SubmitPasswordCommand}" HorizontalAlignment="Stretch"
             Style="{StaticResource AccentButtonStyle}" AutomationProperties.Name="登录" />
-          <ProgressBar IsIndeterminate="True" Visibility="{Binding IsBusy, Converter={StaticResource BooleanVisibilityConverter}}"
+          <ProgressBar appearance:MotionGate.Indeterminate="True" Visibility="{Binding IsBusy, Converter={StaticResource BooleanVisibilityConverter}}"
             AutomationProperties.Name="正在登录" />
         </StackPanel>
         <InfoBar IsOpen="{Binding Error, Converter={StaticResource HasTextConverter}}" IsClosable="False"

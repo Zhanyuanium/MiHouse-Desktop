@@ -3,7 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Animation;
-using Windows.UI.ViewManagement;
+using MiHouse.App.Appearance;
 
 namespace MiHouse.App.Views;
 
@@ -19,7 +19,6 @@ public sealed partial class PageLayout : UserControl
     public static readonly DependencyProperty ItemsSourceProperty = DependencyProperty.Register(nameof(ItemsSource), typeof(IEnumerable), typeof(PageLayout), new PropertyMetadata(null, OnLayoutChanged));
     public static readonly DependencyProperty ItemTemplateProperty = DependencyProperty.Register(nameof(ItemTemplate), typeof(DataTemplate), typeof(PageLayout), new PropertyMetadata(null, OnLayoutChanged));
     private bool _usesItems;
-    private readonly UISettings _uiSettings = new();
     private Storyboard? _entrance;
     private bool _entrancePending;
     public PageLayout()
@@ -35,7 +34,7 @@ public sealed partial class PageLayout : UserControl
     public void PlayEntrance()
     {
         ResetEntrance();
-        if (!_uiSettings.AnimationsEnabled) { return; }
+        if (!AppMotion.IsEnabled) { return; }
         if (!IsLoaded) { _entrancePending = true; return; }
         var duration = new Duration(TimeSpan.FromMilliseconds(200));
         var rise = new DoubleAnimation { From = 12, To = 0, Duration = duration, EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
