@@ -47,7 +47,6 @@ public sealed partial class DeviceRowViewModel : ObservableObject
     public string Name => string.IsNullOrWhiteSpace(Device.Name) ? Device.Model : Device.Name;
     public string Model => Device.Model;
     public string RoomName => string.IsNullOrWhiteSpace(Device.RoomName) ? "未分配房间" : Device.RoomName;
-    public string Monogram => StringInfo.GetNextTextElement(Name);
     public bool IsOnline => Device.IsOnline;
     public string OnlineLabel => IsOnline ? "在线" : "离线";
     public string RoomStatusText => $"{RoomName} · {OnlineLabel}";
@@ -60,6 +59,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject
         : !Power.HasValue ? "当前值不可用，暂不能切换电源" : "切换电源，立即写入";
     private string? Category => DeviceClass.ResolveCategory(Device, Spec?.Type);
     public string ClassName => DeviceClass.DisplayName(Category);
+    public string CategoryKey => Category ?? "other";
     internal int ClassOrder => DeviceClass.SortOrder(Category);
     internal SpecInstance? Spec { get; private set; }
     public ObservableCollection<SensorReadingViewModel> SensorReadings { get; } = [];
@@ -133,6 +133,8 @@ public sealed partial class DeviceRowViewModel : ObservableObject
             _targetVersion++;
         }
 
+        string previousClassName = ClassName;
+        string previousCategoryKey = CategoryKey;
         _device = device;
         IsRemoved = false;
         if (definitionsChanged)
@@ -140,10 +142,19 @@ public sealed partial class DeviceRowViewModel : ObservableObject
             ResetControlDefinitions();
         }
 
-        foreach (string name in new[] { nameof(Device), nameof(Name), nameof(Model), nameof(RoomName), nameof(Monogram),
-            nameof(IsOnline), nameof(OnlineLabel), nameof(RoomStatusText), nameof(QuickStatusText), nameof(AccessibleName), nameof(PowerAccessibleName), nameof(ClassName), nameof(CanToggle) })
+        foreach (string name in new[] { nameof(Device), nameof(Name), nameof(Model), nameof(RoomName),
+            nameof(IsOnline), nameof(OnlineLabel), nameof(RoomStatusText), nameof(QuickStatusText), nameof(AccessibleName), nameof(PowerAccessibleName), nameof(CanToggle) })
         {
             OnPropertyChanged(name);
+        }
+
+        // Re-parsing an icon geometry per refresh is wasteful, so only notify when the class
+        // actually moved.
+        if (!string.Equals(previousClassName, ClassName, StringComparison.Ordinal) ||
+            !string.Equals(previousCategoryKey, CategoryKey, StringComparison.Ordinal))
+        {
+            OnPropertyChanged(nameof(ClassName));
+            OnPropertyChanged(nameof(CategoryKey));
         }
     }
 
@@ -173,6 +184,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject
         Power = null;
         Error = null;
         OnPropertyChanged(nameof(ClassName));
+        OnPropertyChanged(nameof(CategoryKey));
         ControlIdentityChanged?.Invoke(this);
     }
 
@@ -346,6 +358,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject
 
             Spec = spec;
             OnPropertyChanged(nameof(ClassName));
+            OnPropertyChanged(nameof(CategoryKey));
             if (Spec is null)
             {
                 return;

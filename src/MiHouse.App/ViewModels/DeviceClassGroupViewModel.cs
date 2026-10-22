@@ -19,7 +19,6 @@ public sealed partial class DeviceClassGroupViewModel : ObservableCollection<Dev
     }
     public string Name { get; }
     public DeviceClassCardViewModel Card { get; }
-    public string Monogram => System.Globalization.StringInfo.GetNextTextElement(Name);
     public bool IsBusy { get => _isBusy; private set { _isBusy = value; NotifyState(); } }
     public string? Notice { get => _notice; private set { _notice = value; NotifyState(); } }
     public bool HasPower => this.Any(device => device.HasPower && !device.IsRemoved);
@@ -114,6 +113,7 @@ public sealed class DeviceClassCardViewModel(DeviceClassGroupViewModel group) : 
 {
     public DeviceClassGroupViewModel Group { get; } = group;
     public string Name => Group.Name;
+    public string IconKey => Group.FirstOrDefault(device => !device.IsRemoved)?.CategoryKey ?? "other";
     public string Summary => Group.Summary;
     public string? Notice => Group.Notice;
     public bool CanToggle => Group.CanToggle;
@@ -122,6 +122,6 @@ public sealed class DeviceClassCardViewModel(DeviceClassGroupViewModel group) : 
     public double HaloLevel => Group.HaloLevel;
     internal void NotifyState()
     {
-        foreach (string name in new[] { nameof(Summary), nameof(Notice), nameof(CanToggle), nameof(HasPower), nameof(PowerState), nameof(HaloLevel) }) { OnPropertyChanged(name); }
+        foreach (string name in new[] { nameof(IconKey), nameof(Summary), nameof(Notice), nameof(CanToggle), nameof(HasPower), nameof(PowerState), nameof(HaloLevel) }) { OnPropertyChanged(name); }
     }
 }

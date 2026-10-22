@@ -190,6 +190,9 @@ public sealed partial class DevicesViewModel
         var previous = DeviceClasses.ToDictionary(group => group.Name);
         var next = new List<DeviceClassGroupViewModel>();
         foreach (IGrouping<string, DeviceRowViewModel> group in rows.GroupBy(row => row.ClassName)
+            // Display names merge several categories (人体传感器 = motion + occupancy, 扫地机 =
+            // vacuum + robot-vacuum), so the group's icon comes from its first member and those
+            // pairs must stay visually interchangeable.
             .OrderBy(group => group.Min(row => row.ClassOrder)).ThenBy(group => group.Key))
         {
             if (previous.Remove(group.Key, out DeviceClassGroupViewModel? existing))

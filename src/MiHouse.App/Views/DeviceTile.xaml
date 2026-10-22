@@ -16,7 +16,8 @@
             <Grid ColumnSpacing="12">
               <Grid.ColumnDefinitions><ColumnDefinition Width="40" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
               <Border Width="40" Height="40" CornerRadius="12" Background="{ThemeResource MonogramTintBrush}" VerticalAlignment="Center">
-                <TextBlock Text="{Binding Monogram}" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <PathIcon Width="20" Height="20" Data="{Binding CategoryKey, Converter={StaticResource DeviceIconConverter}}"
+                  Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
               </Border>
               <StackPanel Grid.Column="1" Spacing="3">
                 <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{Binding Name}" />

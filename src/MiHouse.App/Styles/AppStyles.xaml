@@ -17,6 +17,7 @@
   <views:OnlineOpacityConverter x:Key="OnlineOpacityConverter" />
   <views:RoomSelectionBrushConverter x:Key="RoomSelectionBrushConverter" />
   <views:RoomPillBrushConverter x:Key="RoomPillBrushConverter" />
+  <views:DeviceIconConverter x:Key="DeviceIconConverter" />
   <SolidColorBrush x:Key="MonogramTintBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.12" />
   <Style x:Key="SecondaryTextStyle" TargetType="TextBlock" BasedOn="{StaticResource BodyTextBlockStyle}">
     <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
