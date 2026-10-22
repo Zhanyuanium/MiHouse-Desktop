@@ -26,11 +26,6 @@
               <ProgressRing Width="40" Height="40" IsActive="{Binding IsBusy}"
                 Visibility="{Binding IsBusy, Converter={StaticResource BooleanVisibilityConverter}}"
                 AutomationProperties.Name="正在生成二维码" />
-              <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="8" Padding="8" CornerRadius="16"
-                Background="{ThemeResource LayerFillColorDefaultBrush}"
-                Visibility="{Binding IsPolling, Converter={StaticResource BooleanVisibilityConverter}}">
-                <ProgressRing Width="20" Height="20" IsActive="{Binding IsPolling}" AutomationProperties.Name="等待扫码确认" />
-              </Border>
             </Grid>
           </Button>
           <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" HorizontalAlignment="Center"

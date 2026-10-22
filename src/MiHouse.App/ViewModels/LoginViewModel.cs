@@ -33,7 +33,6 @@ public sealed partial class LoginViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusText))]
-    [NotifyPropertyChangedFor(nameof(IsPolling))]
     public partial QrLoginState State { get; set; }
 
     [ObservableProperty]
@@ -57,7 +56,6 @@ public sealed partial class LoginViewModel : ObservableObject
     public event Action<MiHomeSession>? SignedIn;
 
     public bool IsQrMode => !IsPasswordMode;
-    public bool IsPolling => State == QrLoginState.Waiting && IsQrMode;
     public bool IsEmpty => QrImageUrl is null;
     public string StatusText => State switch
     {
@@ -171,7 +169,6 @@ public sealed partial class LoginViewModel : ObservableObject
         QrImageUrl = null;
         Error = null;
         Password = string.Empty;
-        OnPropertyChanged(nameof(IsPolling));
     }
 
     [RelayCommand]
