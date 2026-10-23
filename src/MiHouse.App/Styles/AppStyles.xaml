@@ -43,6 +43,29 @@
   <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#0078D4" />
   <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#429CE3" />
   <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#76B9ED" />
+  <!--
+    Aliases the WinUI theme dictionary resolves with StaticResource: they capture the framework
+    brush instance once, so a later accent change never reaches the controls that use them
+    (the NavigationView selection bar, the ListView selection indicator, the progress ring, the
+    ColorPicker sliders). Declaring the aliases here hands the instance to the app, and
+    AppearanceService repaints them in place whenever the accent or the theme changes.
+  -->
+  <SolidColorBrush x:Key="NavigationViewSelectionIndicatorForeground" Color="#0078D4" />
+  <SolidColorBrush x:Key="ListViewItemSelectionIndicatorBrush" Color="#0078D4" />
+  <SolidColorBrush x:Key="ListViewItemSelectionIndicatorPointerOverBrush" Color="#0078D4" />
+  <SolidColorBrush x:Key="ListViewItemSelectionIndicatorPressedBrush" Color="#0078D4" />
+  <SolidColorBrush x:Key="ProgressRingForegroundThemeBrush" Color="#0078D4" />
+  <SolidColorBrush x:Key="SliderThumbBackground" Color="#0078D4" />
+  <SolidColorBrush x:Key="SliderThumbBackgroundPointerOver" Color="#0078D4" Opacity="0.9" />
+  <SolidColorBrush x:Key="SliderThumbBackgroundPressed" Color="#0078D4" Opacity="0.8" />
+  <SolidColorBrush x:Key="SliderTrackValueFill" Color="#0078D4" />
+  <SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="#0078D4" Opacity="0.9" />
+  <SolidColorBrush x:Key="SliderTrackValueFillPressed" Color="#0078D4" Opacity="0.8" />
+  <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="#0078D4" />
+  <SolidColorBrush x:Key="ToggleSwitchStrokeOn" Color="#0078D4" />
+  <SolidColorBrush x:Key="ToggleSwitchKnobFillOn" Color="#FFFFFF" />
+  <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPointerOver" Color="#FFFFFF" />
+  <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPressed" Color="#FFFFFF" />
   <Color x:Key="SystemAccentColor">#FF0078D4</Color>
   <Color x:Key="SystemAccentColorLight1">#FF429CE3</Color>
   <Color x:Key="SystemAccentColorLight2">#FF76B9ED</Color>
@@ -55,14 +78,24 @@
     <Setter Property="TextWrapping" Value="Wrap" />
   </Style>
   <!--
-    Device category icons. The MDI glyphs are drawn on a 24x24 grid, but PathIcon does not
+    Shared icon area. Device tiles, the device detail header, the category cards and the scene
+    cards all show their glyph in the same 40x40 well with the same 36x36 icon box, so the four
+    places are visually identical and only one set of sizes is defined.
+  -->
+  <Style x:Key="DeviceIconAreaStyle" TargetType="Grid">
+    <Setter Property="Width" Value="40" /><Setter Property="Height" Value="40" />
+    <Setter Property="HorizontalAlignment" Value="Center" /><Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <!--
+    Device and scene icons. The MDI glyphs are drawn on a 24x24 grid, but PathIcon does not
     scale its geometry: it renders the path at its natural size and clips it to the control
-    bounds, so a 20x20 PathIcon cuts the right and bottom of the artwork off. Giving the
-    PathIcon the full 24x24 grid and letting a 20x20 Viewbox do the scaling keeps every
-    glyph complete and keeps all categories on the same scale.
+    bounds, so a small PathIcon cuts the right and bottom of the artwork off. Giving the
+    PathIcon the full 24x24 grid and letting a Viewbox do the scaling keeps every glyph
+    complete and keeps all glyphs on the same scale. The Viewbox is the icon area itself,
+    so the artwork sits directly on the card without a backdrop plate.
   -->
   <Style x:Key="DeviceIconViewboxStyle" TargetType="Viewbox">
-    <Setter Property="Width" Value="20" /><Setter Property="Height" Value="20" />
+    <Setter Property="Width" Value="36" /><Setter Property="Height" Value="36" />
     <Setter Property="Stretch" Value="Uniform" />
     <Setter Property="HorizontalAlignment" Value="Center" /><Setter Property="VerticalAlignment" Value="Center" />
   </Style>
@@ -113,14 +146,14 @@
        <Grid ColumnSpacing="12" VerticalAlignment="Center" Padding="{StaticResource DashboardCardPadding}">
         <Grid.ColumnDefinitions><ColumnDefinition Width="40" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-        <Border Width="40" Height="40" CornerRadius="12" Background="{StaticResource DeviceIconBackdropBrush}" VerticalAlignment="Center">
-          <Grid>
-            <FontIcon Glyph="&#xE945;" FontSize="20" Foreground="{StaticResource DeviceIconBrush}"
-              Visibility="{Binding IsBusy, Converter={StaticResource BooleanVisibilityConverter}, ConverterParameter=Inverse}" />
-            <ProgressRing Width="16" Height="16" MinWidth="16" MinHeight="16" appearance:MotionGate.Active="{Binding IsBusy}"
-              Visibility="{Binding IsBusy, Converter={StaticResource BooleanVisibilityConverter}}" AutomationProperties.Name="正在执行场景" />
-          </Grid>
-        </Border>
+        <Grid Style="{StaticResource DeviceIconAreaStyle}">
+          <FontIcon Glyph="&#xE945;" FontSize="32" Foreground="{StaticResource DeviceIconBrush}"
+            HorizontalAlignment="Center" VerticalAlignment="Center"
+            Visibility="{Binding IsBusy, Converter={StaticResource BooleanVisibilityConverter}, ConverterParameter=Inverse}" />
+          <ProgressRing Width="16" Height="16" MinWidth="16" MinHeight="16" appearance:MotionGate.Active="{Binding IsBusy}"
+            HorizontalAlignment="Center" VerticalAlignment="Center"
+            Visibility="{Binding IsBusy, Converter={StaticResource BooleanVisibilityConverter}}" AutomationProperties.Name="正在执行场景" />
+        </Grid>
         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
           <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{Binding Name}" />
           <TextBlock Text="已停用" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"

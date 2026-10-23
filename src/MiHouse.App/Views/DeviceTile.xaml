@@ -16,12 +16,12 @@
             AutomationProperties.Name="{Binding AccessibleName}" AutomationProperties.HelpText="打开设备详情">
             <Grid ColumnSpacing="12">
               <Grid.ColumnDefinitions><ColumnDefinition Width="40" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-              <Border Width="40" Height="40" CornerRadius="12" Background="{StaticResource DeviceIconBackdropBrush}" VerticalAlignment="Center">
+              <Grid Style="{StaticResource DeviceIconAreaStyle}">
                 <Viewbox Style="{StaticResource DeviceIconViewboxStyle}">
                   <PathIcon Style="{StaticResource DeviceIconPathStyle}" Data="{Binding CategoryKey, Converter={StaticResource DeviceIconConverter}}"
                     Foreground="{StaticResource DeviceIconBrush}" />
                 </Viewbox>
-              </Border>
+              </Grid>
               <StackPanel Grid.Column="1" Spacing="3">
                 <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{Binding Name}" />
                 <TextBlock x:Name="RoomLine" Text="{Binding RoomStatusText}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />

@@ -41,6 +41,33 @@ public sealed class AppearanceService
         ["AccentTextFillColorTertiaryBrush"] = null,
     };
 
+    /// <summary>
+    /// Theme resources the WinUI theme dictionary aliases with <c>StaticResource</c>. The alias
+    /// captures the framework brush once, so accent changes never reach the control that uses it.
+    /// The app declares the same keys (see <c>Styles/AppStyles.xaml</c>) and repaints them here.
+    /// </summary>
+    private static readonly (string Alias, string Source)[] _accentAliases =
+    [
+        ("NavigationViewSelectionIndicatorForeground", "AccentFillColorDefaultBrush"),
+        ("ListViewItemSelectionIndicatorBrush", "AccentFillColorDefaultBrush"),
+        ("ListViewItemSelectionIndicatorPointerOverBrush", "AccentFillColorDefaultBrush"),
+        ("ListViewItemSelectionIndicatorPressedBrush", "AccentFillColorDefaultBrush"),
+        ("ProgressRingForegroundThemeBrush", "AccentFillColorDefaultBrush"),
+        ("SliderThumbBackground", "AccentFillColorDefaultBrush"),
+        ("SliderThumbBackgroundPointerOver", "AccentFillColorSecondaryBrush"),
+        ("SliderThumbBackgroundPressed", "AccentFillColorTertiaryBrush"),
+        ("SliderTrackValueFill", "AccentFillColorDefaultBrush"),
+        ("SliderTrackValueFillPointerOver", "AccentFillColorSecondaryBrush"),
+        ("SliderTrackValueFillPressed", "AccentFillColorTertiaryBrush"),
+        ("ToggleSwitchFillOn", "AccentFillColorDefaultBrush"),
+        ("ToggleSwitchStrokeOn", "AccentFillColorDefaultBrush"),
+        ("ToggleSwitchKnobFillOn", "TextOnAccentFillColorPrimaryBrush"),
+        ("ToggleSwitchKnobFillOnPointerOver", "TextOnAccentFillColorPrimaryBrush"),
+        ("ToggleSwitchKnobFillOnPressed", "TextOnAccentFillColorPrimaryBrush"),
+    ];
+
+    private readonly Dictionary<string, SolidColorBrush?> _accentAliasBrushes = new();
+
     private Color _currentAccent;
 
     /// <summary>Text drawn on an accent fill in a light theme.</summary>
@@ -83,6 +110,11 @@ public sealed class AppearanceService
         foreach (string key in _systemBrushes.Keys.ToList())
         {
             _systemBrushes[key] = FindBrush(resources, key);
+        }
+
+        foreach ((string alias, _) in _accentAliases)
+        {
+            _accentAliasBrushes[alias] = FindBrush(resources, alias);
         }
 
         ApplyAccent();
@@ -200,10 +232,34 @@ public sealed class AppearanceService
             ReplaceColor("SystemAccentColorDark1", palette.Dark1);
             ReplaceColor("SystemAccentColorDark2", palette.Dark2);
             ReplaceColor("SystemAccentColorDark3", palette.Dark3);
+
+            ApplyAccentAliases();
         }
 
         ApplyDeviceIcons();
         AccentApplied?.Invoke();
+    }
+
+    /// <summary>
+    /// Mirrors the accent brushes onto the aliases the WinUI theme dictionary resolves with
+    /// <c>StaticResource</c>, so the native controls that use them follow the accent live.
+    /// </summary>
+    private void ApplyAccentAliases()
+    {
+        foreach ((string alias, string source) in _accentAliases)
+        {
+            if (!_accentAliasBrushes.TryGetValue(alias, out SolidColorBrush? aliasBrush) || aliasBrush is null)
+            {
+                continue;
+            }
+
+            if (!_systemBrushes.TryGetValue(source, out SolidColorBrush? sourceBrush) || sourceBrush is null)
+            {
+                continue;
+            }
+
+            Repaint(aliasBrush, sourceBrush.Color, sourceBrush.Opacity);
+        }
     }
 
     private Color ResolveAccentColor()
