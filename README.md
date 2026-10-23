@@ -2,9 +2,13 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
+![MiHouse](docs/images/banner.png)
+
 MiHouse is an unofficial, local-first Windows desktop client for Xiaomi Mi Home accounts, built with WinUI 3 and .NET 10. It speaks the account, cloud and miot-spec protocols used by the official Android app, which were reverse-engineered for this project. It is not affiliated with, endorsed by, or supported by Xiaomi.
 
-The UI is generated from miot-spec metadata instead of the official plugins, so device support follows the published spec rather than the Mi Home plugin catalog. The project is early-stage; the list below is the implemented surface, not a roadmap.
+The UI is generated from miot-spec metadata instead of the official plugins, so device support follows the published spec rather than the Mi Home plugin catalog. The list below is the implemented surface for 1.0, not a roadmap.
+
+**Upgrading from 0.1.x.** Version 1.0 runs with package identity and keeps its data inside the package data folders. The session and appearance settings of an unpackaged 0.1.x run are not migrated, so sign in once and set your appearance again.
 
 ![MiHouse home dashboard](docs/images/home.png)
 
@@ -12,7 +16,10 @@ The UI is generated from miot-spec metadata instead of the official plugins, so 
 
 - **Sign-in.** QR code or Xiaomi account password. The session is protected with Windows DPAPI for the current user and restored on the next launch. Password sign-in rejects accounts that require two-factor authentication; use the QR flow for those.
 - **Homes and rooms.** Owned and shared homes, room membership, and a home switcher in the title bar.
-- **Device tiles.** Online state, monogram, power control, and sensor readings on room and category pages; the home dashboard summarises the same devices by class.
+- **Device tiles.** Online state, category icon, power control, and sensor readings on room and category pages; the home dashboard summarises the same devices by class.
+- **Category icons.** Every miot-spec class maps to a Material Design Icons glyph. Icons follow the app accent color, or render in a neutral shade when colored icons are turned off.
+- **Appearance.** System, light or dark theme; the accent color comes from Windows or from a custom picker, and colored icons and motion can be switched off. Choices persist in `appearance.json` and apply without a restart.
+- **Switch channels.** A wall-switch channel that Mi Home marks as a light (cloud `subclass_id`) joins the light class. A switch body whose first channel already has its own row is hidden from room pages, so that channel is not controlled twice.
 - **Tri-state class switches.** Each device category shows on, off, or partial. Applying a state targets only controllable online members; offline and read-only devices are skipped.
 - **Scenes.** Manual scenes for the selected home; disabled scenes are labelled and every run asks for confirmation.
 - **Device details.** Spec-driven properties in normal and advanced sections, with boolean, enum, range and text editors. Edits are written immediately, then verified by a re-read; the optimistic value is marked unconfirmed until the device reports it, bounded to 12 seconds, after which the next successful read wins. Actions also require confirmation.
@@ -57,6 +64,7 @@ winapp package src\MiHouse.App\MiHouse.App.csproj -c Release --arch x64 --arch a
 
 - **Session.** `%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalState\session.dat`, a JSON payload encrypted with DPAPI (`DataProtectionScope.CurrentUser`). Signing out deletes it; a corrupt file is treated as signed out.
 - **Caches.** miot-spec documents live in `%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalCache\spec`, keyed by SHA-256. Warm-start snapshots live in `%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalCache\snapshots\<userId>`. All persisted data stays inside the package data folders, so uninstalling the package removes it.
+- **Appearance.** `%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalState\appearance.json`: plain JSON holding the theme mode, accent source and color, colored-icon and motion switches.
 - **Network.** Sign-in talks to `account.xiaomi.com` and `sts.api.io.mi.com`; signed API calls go to `api.io.mi.com` or `<region>.api.io.mi.com`; spec definitions come from `miot-spec.org`. LAN control sends miIO UDP packets directly to the device. No telemetry or analytics is implemented.
 - **Capabilities.** The package declares only `internetClient` (cloud HTTPS) and `privateNetworkClientServer` (miIO UDP to LAN devices and local DNS). It holds no broad system-resource permission such as `runFullTrust`.
 - **Crash logs.** `%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalState\logs\crash-*.log`, newest 20 kept. The format is a whitelist: timestamp, app version, source, exception type, inner-exception type names, a reflection-built stack, and `<not recorded>` in place of any message.
@@ -89,3 +97,5 @@ More detail: `docs/architecture.md`, `docs/protocol-notes.md`, `docs/build.md`.
 ## License
 
 Released under the **GNU General Public License v3.0 or later** (GPL-3.0-or-later); the full text is in [`LICENSE`](LICENSE). Modified versions must be distributed under the same license with corresponding source. The project comes with no warranty. `MiHouse` and its Chinese name `米耗子` are not affiliated with Xiaomi; Xiaomi and Mi Home are trademarks of their respective owners.
+
+Device category icons come from Material Design Icons (Apache-2.0, Pictogrammers). The license text and the list of glyphs ship with the package; see [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
