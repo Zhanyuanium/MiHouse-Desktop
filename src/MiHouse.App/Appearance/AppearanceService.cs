@@ -22,6 +22,7 @@ public sealed class AppearanceService
     private ResourceDictionary? _resources;
     private bool _initialized;
 
+    private SolidColorBrush? _accentBase;
     private SolidColorBrush? _appAccent;
     private SolidColorBrush? _appAccentSubtle;
     private SolidColorBrush? _appOnAccent;
@@ -41,6 +42,12 @@ public sealed class AppearanceService
     };
 
     private Color _currentAccent;
+
+    /// <summary>Text drawn on an accent fill in a light theme.</summary>
+    private static readonly Color _lightOnAccent = Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+
+    /// <summary>Text drawn on an accent fill in a dark theme.</summary>
+    private static readonly Color _darkOnAccent = Color.FromArgb(0xFF, 0x00, 0x00, 0x00);
 
     /// <summary>Raised after the accent brushes have been repainted.</summary>
     public static event Action? AccentApplied;
@@ -67,6 +74,7 @@ public sealed class AppearanceService
 
         _initialized = true;
         _resources = resources;
+        _accentBase = FindBrush(resources, "AccentBaseBrush");
         _appAccent = FindBrush(resources, "AppAccentBrush");
         _appAccentSubtle = FindBrush(resources, "AppAccentSubtleBrush");
         _appOnAccent = FindBrush(resources, "AppOnAccentBrush");
@@ -88,6 +96,11 @@ public sealed class AppearanceService
         ApplyThemeMode();
         ApplyTitleBar();
         ApplyAccent();
+
+        // RequestedTheme only takes effect on the next layout pass, so the first pass can still
+        // see the previous theme. ActualThemeChanged covers that case, and this extra pass makes
+        // sure the accent matches the final theme even when the theme did not change at all.
+        window.DispatcherQueue.TryEnqueue(() => Run(ApplyAccent));
     }
 
     private static SolidColorBrush? FindBrush(ResourceDictionary resources, string key)
@@ -111,7 +124,9 @@ public sealed class AppearanceService
                 {
                     ApplyThemeMode();
                     ApplyTitleBar();
-                    ApplyDeviceIcons();
+                    // The accent steps follow the theme; ActualThemeChanged recomputes them once
+                    // the new theme is actually applied.
+                    ApplyAccent();
                 });
                 break;
             case nameof(AppearanceSettings.AccentSource):
@@ -126,8 +141,9 @@ public sealed class AppearanceService
 
     private void OnActualThemeChanged()
     {
+        // The accent steps depend on the theme, so a theme switch has to recompute them.
+        ApplyAccent();
         ApplyTitleBar();
-        ApplyDeviceIcons();
     }
 
     private void ApplyThemeMode()
@@ -147,27 +163,35 @@ public sealed class AppearanceService
 
     private void ApplyAccent()
     {
-        Color accent = ResolveAccentColor();
-        _currentAccent = accent;
-        AccentPalette palette = AccentPalette.FromBase(accent);
-        Color onAccent = palette.OnAccent;
+        Color baseAccent = ResolveAccentColor();
+        AccentPalette palette = AccentPalette.FromBase(baseAccent);
+        bool dark = _window?.Root.ActualTheme == ElementTheme.Dark;
 
-        Repaint(_appAccent, accent);
-        Repaint(_appAccentSubtle, accent, 0.12);
+        // The base accent is the colour the user picked (or the system accent). Light themes
+        // draw it with a darker step, dark themes with a lighter, less saturated step, the same
+        // way the system derives its own accent brushes from SystemAccentColor*.
+        Color effective = dark ? palette.Light2 : palette.Dark1;
+        Color onAccent = dark ? _darkOnAccent : _lightOnAccent;
+
+        _currentAccent = effective;
+
+        Repaint(_accentBase, baseAccent);
+        Repaint(_appAccent, effective);
+        Repaint(_appAccentSubtle, effective, 0.12);
         Repaint(_appOnAccent, onAccent);
 
         // High contrast owns every system color: overriding these keys there would break the
         // contrast guarantees of the HC theme dictionaries.
         if (!HighContrast.IsEnabled)
         {
-            Repaint(_systemBrushes["AccentFillColorDefaultBrush"], accent);
-            Repaint(_systemBrushes["AccentFillColorSecondaryBrush"], accent, 0.9);
-            Repaint(_systemBrushes["AccentFillColorTertiaryBrush"], accent, 0.8);
+            Repaint(_systemBrushes["AccentFillColorDefaultBrush"], effective);
+            Repaint(_systemBrushes["AccentFillColorSecondaryBrush"], effective, 0.9);
+            Repaint(_systemBrushes["AccentFillColorTertiaryBrush"], effective, 0.8);
             Repaint(_systemBrushes["TextOnAccentFillColorPrimaryBrush"], onAccent);
             Repaint(_systemBrushes["TextOnAccentFillColorSecondaryBrush"], onAccent, 0.7);
-            Repaint(_systemBrushes["AccentTextFillColorPrimaryBrush"], accent);
-            Repaint(_systemBrushes["AccentTextFillColorSecondaryBrush"], palette.Light1);
-            Repaint(_systemBrushes["AccentTextFillColorTertiaryBrush"], palette.Light2);
+            Repaint(_systemBrushes["AccentTextFillColorPrimaryBrush"], dark ? palette.Light3 : palette.Dark2);
+            Repaint(_systemBrushes["AccentTextFillColorSecondaryBrush"], dark ? palette.Light3 : palette.Dark3);
+            Repaint(_systemBrushes["AccentTextFillColorTertiaryBrush"], dark ? palette.Light2 : palette.Dark1);
 
             ReplaceColor("SystemAccentColor", palette.Accent);
             ReplaceColor("SystemAccentColorLight1", palette.Light1);

@@ -15,10 +15,6 @@ internal readonly record struct AccentPalette(
     Color Dark2,
     Color Dark3)
 {
-    public Color OnAccent => RelativeLuminance(Accent) > 0.5
-        ? Color.FromArgb(0xFF, 0x00, 0x00, 0x00)
-        : Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
-
     public static AccentPalette FromBase(Color accent)
     {
         (double hue, double saturation, double lightness) = ToHsl(accent);
@@ -112,15 +108,4 @@ internal readonly record struct AccentPalette(
     }
 
     private static byte ToByte(double value) => (byte)Math.Round(Math.Clamp(value, 0, 1) * 255);
-
-    private static double RelativeLuminance(Color color)
-    {
-        return (0.2126 * Linear(color.R)) + (0.7152 * Linear(color.G)) + (0.0722 * Linear(color.B));
-    }
-
-    private static double Linear(byte channel)
-    {
-        double value = channel / 255.0;
-        return value <= 0.03928 ? value / 12.92 : Math.Pow((value + 0.055) / 1.055, 2.4);
-    }
 }

@@ -24,6 +24,8 @@
     StaticResource holder repaints immediately; do not switch these to ThemeResource.
   -->
   <SolidColorBrush x:Key="AppAccentBrush" Color="#0078D4" />
+  <!-- The color the user picked, before the light/dark accent ramp is applied. -->
+  <SolidColorBrush x:Key="AccentBaseBrush" Color="#0078D4" />
   <SolidColorBrush x:Key="AppAccentSubtleBrush" Color="#0078D4" Opacity="0.12" />
   <SolidColorBrush x:Key="AppOnAccentBrush" Color="#FFFFFF" />
   <SolidColorBrush x:Key="DeviceIconBrush" Color="#0078D4" />
@@ -51,6 +53,21 @@
   <Style x:Key="SecondaryTextStyle" TargetType="TextBlock" BasedOn="{StaticResource BodyTextBlockStyle}">
     <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
     <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <!--
+    Device category icons. The MDI glyphs are drawn on a 24x24 grid, but PathIcon does not
+    scale its geometry: it renders the path at its natural size and clips it to the control
+    bounds, so a 20x20 PathIcon cuts the right and bottom of the artwork off. Giving the
+    PathIcon the full 24x24 grid and letting a 20x20 Viewbox do the scaling keeps every
+    glyph complete and keeps all categories on the same scale.
+  -->
+  <Style x:Key="DeviceIconViewboxStyle" TargetType="Viewbox">
+    <Setter Property="Width" Value="20" /><Setter Property="Height" Value="20" />
+    <Setter Property="Stretch" Value="Uniform" />
+    <Setter Property="HorizontalAlignment" Value="Center" /><Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style x:Key="DeviceIconPathStyle" TargetType="PathIcon">
+    <Setter Property="Width" Value="24" /><Setter Property="Height" Value="24" />
   </Style>
   <Thickness x:Key="DashboardCardPadding">12</Thickness>
   <x:Double x:Key="DashboardCardMinHeight">100</x:Double>

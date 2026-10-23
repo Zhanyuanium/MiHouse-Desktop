@@ -17,8 +17,10 @@
             <Grid ColumnSpacing="12">
               <Grid.ColumnDefinitions><ColumnDefinition Width="40" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
               <Border Width="40" Height="40" CornerRadius="12" Background="{StaticResource DeviceIconBackdropBrush}" VerticalAlignment="Center">
-                <PathIcon Width="20" Height="20" Data="{Binding CategoryKey, Converter={StaticResource DeviceIconConverter}}"
-                  Foreground="{StaticResource DeviceIconBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <Viewbox Style="{StaticResource DeviceIconViewboxStyle}">
+                  <PathIcon Style="{StaticResource DeviceIconPathStyle}" Data="{Binding CategoryKey, Converter={StaticResource DeviceIconConverter}}"
+                    Foreground="{StaticResource DeviceIconBrush}" />
+                </Viewbox>
               </Border>
               <StackPanel Grid.Column="1" Spacing="3">
                 <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{Binding Name}" />

@@ -1,10 +1,9 @@
 <Page x:Class="MiHouse.App.Views.SettingsPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:views="using:MiHouse.App.Views">
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:views="using:MiHouse.App.Views" SizeChanged="OnPageSizeChanged">
   <Page.Resources>
     <Style x:Key="PlannedTag" TargetType="TextBlock">
       <Setter Property="Text" Value="未实现" /><Setter Property="FontSize" Value="11" />
       <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}" />
-      <Setter Property="Margin" Value="8,0,0,0" />
     </Style>
     <Style x:Key="AccentSwatchButtonStyle" TargetType="Button">
       <Setter Property="Padding" Value="0" /><Setter Property="MinWidth" Value="0" />
@@ -15,6 +14,24 @@
           BorderThickness="{TemplateBinding BorderThickness}" />
       </ControlTemplate></Setter.Value></Setter>
     </Style>
+    <!--
+      Windows 11 设置的排版：每张卡片右侧共用同一条控件列。控件在控件列里右对齐，
+      列右边留出 40 的空槽给主题色色块按钮，于是两行下拉框完全对齐，开关也对齐在同一列。
+    -->
+    <Thickness x:Key="SettingsControlGutter">0,0,40,0</Thickness>
+    <Style x:Key="SettingsControlZoneStyle" TargetType="Grid">
+      <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style x:Key="SettingsDropdownStyle" TargetType="ComboBox">
+      <Setter Property="MinWidth" Value="120" /><Setter Property="MaxWidth" Value="220" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style x:Key="SettingsSwitchStyle" TargetType="ToggleSwitch" BasedOn="{StaticResource InlinePowerStyle}">
+      <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="Margin" Value="{StaticResource SettingsControlGutter}" />
+    </Style>
   </Page.Resources>
   <views:PageLayout Heading="设置" Subtitle="账号、家庭与使用偏好">
     <views:PageLayout.Body>
@@ -22,70 +39,83 @@
         <StackPanel Spacing="10">
           <TextBlock Text="账号与家庭" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="4,0,0,2" />
           <views:SettingsCard Header="当前账号" Description="{Binding AccountLabel}" Glyph="&#xE77B;">
-            <views:SettingsCard.Trailing><Button Content="退出登录" Command="{Binding SignOutCommand}" AutomationProperties.Name="退出小米账号并清除本机会话" /></views:SettingsCard.Trailing>
+            <views:SettingsCard.Trailing><Grid Style="{StaticResource SettingsControlZoneStyle}" Width="{x:Bind ControlZoneWidth, Mode=OneWay}">
+              <Button Content="退出登录" HorizontalAlignment="Right" Margin="{StaticResource SettingsControlGutter}" Command="{Binding SignOutCommand}" AutomationProperties.Name="退出小米账号并清除本机会话" />
+            </Grid></views:SettingsCard.Trailing>
           </views:SettingsCard>
           <TextBlock Text="退出将清除本机保存的登录会话。" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="16,0,0,4" />
           <views:SettingsCard Header="账号管理" Description="管理账号信息与登录方式" Glyph="&#xE8D4;">
-            <views:SettingsCard.Trailing><TextBlock Style="{StaticResource PlannedTag}" /></views:SettingsCard.Trailing>
+            <views:SettingsCard.Trailing><Grid Style="{StaticResource SettingsControlZoneStyle}" Width="{x:Bind ControlZoneWidth, Mode=OneWay}">
+              <TextBlock Style="{StaticResource PlannedTag}" HorizontalAlignment="Right" Margin="{StaticResource SettingsControlGutter}" />
+            </Grid></views:SettingsCard.Trailing>
           </views:SettingsCard>
           <views:SettingsCard Header="家庭成员" Description="查看家庭成员与共享权限" Glyph="&#xE716;">
-            <views:SettingsCard.Trailing><TextBlock Style="{StaticResource PlannedTag}" /></views:SettingsCard.Trailing>
+            <views:SettingsCard.Trailing><Grid Style="{StaticResource SettingsControlZoneStyle}" Width="{x:Bind ControlZoneWidth, Mode=OneWay}">
+              <TextBlock Style="{StaticResource PlannedTag}" HorizontalAlignment="Right" Margin="{StaticResource SettingsControlGutter}" />
+            </Grid></views:SettingsCard.Trailing>
           </views:SettingsCard>
         </StackPanel>
         <StackPanel Spacing="10">
           <TextBlock Text="外观" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="4,0,0,2" />
           <views:SettingsCard Header="深浅模式" Description="跟随系统、浅色或深色" Glyph="&#xE708;">
-            <views:SettingsCard.Trailing>
-              <RadioButtons x:Name="ThemeModeSelector" MaxColumns="3" SelectionChanged="OnThemeModeChanged">
-                <x:String>跟随系统</x:String><x:String>浅色</x:String><x:String>深色</x:String>
-              </RadioButtons>
-            </views:SettingsCard.Trailing>
+            <views:SettingsCard.Trailing><Grid Style="{StaticResource SettingsControlZoneStyle}" Width="{x:Bind ControlZoneWidth, Mode=OneWay}">
+              <ComboBox x:Name="ThemeModeSelector" Style="{StaticResource SettingsDropdownStyle}" Width="{x:Bind ControlWidth, Mode=OneWay}"
+                SelectionChanged="OnThemeModeChanged" AutomationProperties.Name="深浅模式">
+                <ComboBoxItem Content="跟随系统" /><ComboBoxItem Content="浅色" /><ComboBoxItem Content="深色" />
+              </ComboBox>
+            </Grid></views:SettingsCard.Trailing>
           </views:SettingsCard>
           <views:SettingsCard Header="主题色" Description="应用内彩色控件与设备图标使用的强调色" Glyph="&#xE790;">
-            <views:SettingsCard.Trailing>
-              <StackPanel x:Name="AccentControls" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                <RadioButtons x:Name="AccentSourceSelector" MaxColumns="2" SelectionChanged="OnAccentSourceChanged">
-                  <x:String>系统强调色</x:String><x:String>自定义</x:String>
-                </RadioButtons>
-                <Button x:Name="AccentSwatchButton" Style="{StaticResource AccentSwatchButtonStyle}" Background="{StaticResource AppAccentBrush}"
-                  BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}"
-                  AutomationProperties.Name="自定义主题色" ToolTipService.ToolTip="选择自定义主题色">
-                  <Button.Flyout>
-                    <Flyout>
-                      <ColorPicker x:Name="AccentPicker" IsAlphaEnabled="False" IsColorChannelTextInputVisible="False"
-                        IsHexInputVisible="True" ColorSpectrumShape="Ring" ColorChanged="OnAccentColorChanged" />
-                    </Flyout>
-                  </Button.Flyout>
-                </Button>
-              </StackPanel>
-            </views:SettingsCard.Trailing>
+            <views:SettingsCard.Trailing><Grid x:Name="AccentControls" Style="{StaticResource SettingsControlZoneStyle}" Width="{x:Bind ControlZoneWidth, Mode=OneWay}">
+              <ComboBox x:Name="AccentSourceSelector" Style="{StaticResource SettingsDropdownStyle}" Width="{x:Bind ControlWidth, Mode=OneWay}"
+                SelectionChanged="OnAccentSourceChanged" AutomationProperties.Name="主题色来源">
+                <ComboBoxItem Content="系统强调色" /><ComboBoxItem Content="自定义" />
+              </ComboBox>
+              <Button x:Name="AccentSwatchButton" Style="{StaticResource AccentSwatchButtonStyle}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                Background="{StaticResource AccentBaseBrush}"
+                BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}"
+                AutomationProperties.Name="自定义主题色" ToolTipService.ToolTip="选择自定义主题色">
+                <Button.Flyout>
+                  <Flyout>
+                    <ColorPicker x:Name="AccentPicker" IsAlphaEnabled="False" IsColorChannelTextInputVisible="False"
+                      IsHexInputVisible="True" ColorSpectrumShape="Ring" ColorChanged="OnAccentColorChanged" />
+                  </Flyout>
+                </Button.Flyout>
+              </Button>
+            </Grid></views:SettingsCard.Trailing>
           </views:SettingsCard>
           <views:SettingsCard Header="彩色图标" Description="设备图标使用主题色，关闭后转为中性色" Glyph="&#xE7C6;">
-            <views:SettingsCard.Trailing>
-              <ToggleSwitch IsOn="{Binding Appearance.UseColoredIcons, Mode=TwoWay}" OnContent="彩色" OffContent="中性"
+            <views:SettingsCard.Trailing><Grid Style="{StaticResource SettingsControlZoneStyle}" Width="{x:Bind ControlZoneWidth, Mode=OneWay}">
+              <ToggleSwitch IsOn="{Binding Appearance.UseColoredIcons, Mode=TwoWay}" Style="{StaticResource SettingsSwitchStyle}"
                 AutomationProperties.Name="设备图标使用主题色" />
-            </views:SettingsCard.Trailing>
+            </Grid></views:SettingsCard.Trailing>
           </views:SettingsCard>
           <views:SettingsCard Header="动效" Description="关闭后停止自绘动效与加载动画，保留静态状态提示" Glyph="&#xE768;">
-            <views:SettingsCard.Trailing>
-              <ToggleSwitch IsOn="{Binding Appearance.AnimationsEnabled, Mode=TwoWay}" OnContent="开" OffContent="关"
+            <views:SettingsCard.Trailing><Grid Style="{StaticResource SettingsControlZoneStyle}" Width="{x:Bind ControlZoneWidth, Mode=OneWay}">
+              <ToggleSwitch IsOn="{Binding Appearance.AnimationsEnabled, Mode=TwoWay}" Style="{StaticResource SettingsSwitchStyle}"
                 AutomationProperties.Name="启用动效" />
-            </views:SettingsCard.Trailing>
+            </Grid></views:SettingsCard.Trailing>
           </views:SettingsCard>
         </StackPanel>
         <StackPanel Spacing="10">
           <TextBlock Text="体验与偏好" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="4,0,0,2" />
           <views:SettingsCard Header="通知" Description="管理本机操作结果与提醒" Glyph="&#xE7F4;">
-            <views:SettingsCard.Trailing><TextBlock Style="{StaticResource PlannedTag}" /></views:SettingsCard.Trailing>
+            <views:SettingsCard.Trailing><Grid Style="{StaticResource SettingsControlZoneStyle}" Width="{x:Bind ControlZoneWidth, Mode=OneWay}">
+              <TextBlock Style="{StaticResource PlannedTag}" HorizontalAlignment="Right" Margin="{StaticResource SettingsControlGutter}" />
+            </Grid></views:SettingsCard.Trailing>
           </views:SettingsCard>
           <views:SettingsCard Header="耗材" Description="设备耗材与剩余寿命" Glyph="&#xE9D9;">
-            <views:SettingsCard.Trailing><TextBlock Style="{StaticResource PlannedTag}" /></views:SettingsCard.Trailing>
+            <views:SettingsCard.Trailing><Grid Style="{StaticResource SettingsControlZoneStyle}" Width="{x:Bind ControlZoneWidth, Mode=OneWay}">
+              <TextBlock Style="{StaticResource PlannedTag}" HorizontalAlignment="Right" Margin="{StaticResource SettingsControlGutter}" />
+            </Grid></views:SettingsCard.Trailing>
           </views:SettingsCard>
         </StackPanel>
         <StackPanel Spacing="10">
           <TextBlock Text="应用信息" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="4,0,0,2" />
           <views:SettingsCard x:Name="AboutCard" Header="关于 MiHouse" Description="版本信息、许可与开源声明" Glyph="&#xE946;">
-            <views:SettingsCard.Trailing><TextBlock Style="{StaticResource PlannedTag}" /></views:SettingsCard.Trailing>
+            <views:SettingsCard.Trailing><Grid Style="{StaticResource SettingsControlZoneStyle}" Width="{x:Bind ControlZoneWidth, Mode=OneWay}">
+              <TextBlock Style="{StaticResource PlannedTag}" HorizontalAlignment="Right" Margin="{StaticResource SettingsControlGutter}" />
+            </Grid></views:SettingsCard.Trailing>
           </views:SettingsCard>
         </StackPanel>
       </StackPanel>
