@@ -63,8 +63,8 @@ capabilities.
 ### Signing certificate
 
 Releases are signed with a self-signed personal developer certificate whose subject is
-`CN=Zhanyunium`, the same value as the manifest `Publisher`. The friendly publisher name comes
-from `PublisherDisplayName`, `浪迹星海@Zhanyunium`, which is what Windows Settings and the About
+`CN=Zhanyuanium`, the same value as the manifest `Publisher`. The friendly publisher name comes
+from `PublisherDisplayName`, `浪迹星海@Zhanyuanium`, which is what Windows Settings and the About
 dialog show. The subject is ASCII on purpose: MSIX compares the manifest publisher and the
 certificate subject as exact strings, so the Chinese name stays only in `PublisherDisplayName`
 and the About dialog, while the certificate remains ASCII. The certificate is valid for
@@ -206,7 +206,7 @@ release `.cer` named here is the file users install, exported by `Package-Releas
 same `.pfx` used to sign the package. `artifacts\signing\MiHouse-Signing.cer` is a development
 export of that same certificate, for local trust only.
 
-The certificate reports the `CN=Zhanyunium` subject, matching the manifest `Publisher`.
+The certificate reports the `CN=Zhanyuanium` subject, matching the manifest `Publisher`.
 `Package-Release.ps1` verifies that match before packaging and exports the release `.cer` from
 the same `.pfx` used to sign the package. Until the certificate is trusted,
 `Get-AuthenticodeSignature` and `signtool verify /pa` report a non-Valid status whose message

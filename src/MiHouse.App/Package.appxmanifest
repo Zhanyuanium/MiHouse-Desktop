@@ -9,14 +9,14 @@
 
   <Identity
     Name="E7E58AE2-FE69-4041-B3CB-BF61B9EC1A47"
-    Publisher="CN=Zhanyunium"
-    Version="1.1.0.0" />
+    Publisher="CN=Zhanyuanium"
+    Version="1.1.1.0" />
 
   <mp:PhoneIdentity PhoneProductId="E7E58AE2-FE69-4041-B3CB-BF61B9EC1A47" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
   <Properties>
     <DisplayName>ms-resource:AppDisplayName</DisplayName>
-    <PublisherDisplayName>浪迹星海@Zhanyunium</PublisherDisplayName>
+    <PublisherDisplayName>浪迹星海@Zhanyuanium</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
 

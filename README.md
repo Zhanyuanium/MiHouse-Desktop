@@ -54,7 +54,7 @@ The UI is generated from miot-spec metadata instead of the official plugins, so 
 ## Install a release
 
 Releases are signed by the project's self-signed personal developer certificate, whose
-subject is `CN=Zhanyunium`; Windows displays the publisher as `浪迹星海@Zhanyunium`. It is not a
+subject is `CN=Zhanyuanium`; Windows displays the publisher as `浪迹星海@Zhanyuanium`. It is not a
 CA-issued certificate, so Windows asks you to trust it once before it will add the package:
 
 1. Download `MiHouse_<version>_x64_arm64.msixbundle` and `MiHouse_<version>.cer` from the

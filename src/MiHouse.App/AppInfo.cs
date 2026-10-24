@@ -5,13 +5,13 @@ namespace MiHouse.App;
 /// <summary>
 /// Facts about this build that the About dialog shows. The publisher string is the friendly
 /// name in <c>Properties/PublisherDisplayName</c>; the signing certificate and the MSIX
-/// <c>Identity/@Publisher</c> deliberately use the ASCII subject <c>CN=Zhanyunium</c> so the
+/// <c>Identity/@Publisher</c> deliberately use the ASCII subject <c>CN=Zhanyuanium</c> so the
 /// two X.500 names compare exactly.
 /// </summary>
 internal static class AppInfo
 {
     /// <summary>Human-readable publisher name, shown in the About dialog and Windows settings.</summary>
-    public const string Publisher = "浪迹星海@Zhanyunium";
+    public const string Publisher = "浪迹星海@Zhanyuanium";
 
     /// <summary>SPDX identifier of the license this project is distributed under.</summary>
     public const string License = "GPL-3.0-or-later";

@@ -53,8 +53,8 @@ MiHouse（中文名：米耗子）是一个非官方、本地优先的 Windows �
 
 ## 安装发行版
 
-发行版由项目自签名的个人开发者证书签名，证书主题为 `CN=Zhanyunium`；Windows 中显示的发布者为
-`浪迹星海@Zhanyunium`。该证书不是由 CA 签发，因此在添加安装包之前，需要先让本机信任它一次：
+发行版由项目自签名的个人开发者证书签名，证书主题为 `CN=Zhanyuanium`；Windows 中显示的发布者为
+`浪迹星海@Zhanyuanium`。该证书不是由 CA 签发，因此在添加安装包之前，需要先让本机信任它一次：
 
 1. 从发行页面下载 `MiHouse_<version>_x64_arm64.msixbundle` 与 `MiHouse_<version>.cer`。
 2. 在管理员权限的 PowerShell 中信任公开证书（每个证书只需一次）：

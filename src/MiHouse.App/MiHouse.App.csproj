@@ -14,11 +14,11 @@
     <EnableMsixTooling>true</EnableMsixTooling>
     <Product>MiHouse</Product>
     <AssemblyTitle>MiHouse</AssemblyTitle>
-    <Version>1.1.0</Version>
+    <Version>1.1.1</Version>
     <Description>Unofficial Xiaomi Mi Home desktop client</Description>
     <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
     <Copyright>Copyright (C) 2026 MiHouse contributors</Copyright>
-    <Company>浪迹星海@Zhanyunium</Company>
+    <Company>浪迹星海@Zhanyuanium</Company>
     <RepositoryUrl>https://github.com/Zhanyuanium/MiHouse-Desktop</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>
