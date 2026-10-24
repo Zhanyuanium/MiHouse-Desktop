@@ -9,8 +9,18 @@ namespace MiHouse.App;
 internal static class AppResources
 {
     private const string _fallbackDisplayName = "MiHouse";
+    private const string _fallbackDescription = "Unofficial Xiaomi Mi Home desktop client";
+    private const string _fallbackAboutTitle = "About MiHouse";
 
     public static string DisplayName { get; } = ReadString("AppDisplayName", _fallbackDisplayName);
+
+    /// <summary>Product name shown next to the icon in About; Chinese locales include the English name.</summary>
+    public static string AboutDisplayName { get; } = ReadString("AppDisplayNameBilingual", DisplayName);
+
+    /// <summary>Dialog and settings-row title; Chinese joins 关于 to the name without a space.</summary>
+    public static string AboutTitle { get; } = ReadString("AboutTitle", _fallbackAboutTitle);
+
+    public static string Description { get; } = ReadString("AppDescription", _fallbackDescription);
 
     private static string ReadString(string key, string fallback)
     {

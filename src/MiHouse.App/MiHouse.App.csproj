@@ -15,9 +15,12 @@
     <Product>MiHouse</Product>
     <AssemblyTitle>MiHouse</AssemblyTitle>
     <Version>1.0.0</Version>
-    <Description>Xiaomi Mi Home desktop client</Description>
+    <Description>Unofficial Xiaomi Mi Home desktop client</Description>
     <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
     <Copyright>Copyright (C) 2026 MiHouse contributors</Copyright>
+    <Company>浪迹星海@Zhanyunium</Company>
+    <RepositoryUrl>https://github.com/Zhanyuanium/MiHouse-Desktop</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
   <ItemGroup>
@@ -44,11 +47,15 @@
   <!--
     Third-party license material travels with the installed package: Apache-2.0 requires the
     license text to reach every recipient, and the notice records the changes made to the
-    vendored glyphs.
+    vendored glyphs. The GPL text ships too, because the About dialog opens it locally. Both
+    are linked with a .txt name so Windows always has a handler for the "open document"
+    action; the extensionless repository LICENSE would not open reliably.
   -->
   <ItemGroup>
+    <Content Include="$(MSBuildProjectDirectory)\..\..\LICENSE"
+             Link="LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="$(MSBuildProjectDirectory)\..\..\THIRD-PARTY-NOTICES.md"
-             Link="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
+             Link="THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="$(MSBuildProjectDirectory)\..\..\licenses\Apache-2.0.txt"
              Link="licenses\Apache-2.0.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

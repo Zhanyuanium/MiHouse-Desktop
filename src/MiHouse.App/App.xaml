@@ -13,6 +13,7 @@
             </ResourceDictionary.MergedDictionaries>
             <!-- Other app resources here -->
             <FontFamily x:Key="ContentControlThemeFontFamily">Segoe UI Variable</FontFamily>
+            <x:Double x:Key="ContentDialogMaxWidth">680</x:Double>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

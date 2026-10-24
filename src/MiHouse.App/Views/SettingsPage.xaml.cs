@@ -1,5 +1,7 @@
 using System.ComponentModel;
+using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using MiHouse.App.Appearance;
 using MiHouse.App.ViewModels;
@@ -26,6 +28,7 @@ public sealed partial class SettingsPage : Page, INotifyPropertyChanged
     private const double _narrowLayoutThreshold = 560;
 
     private bool _syncing;
+    private static bool _aboutDialogOpen;
     private double _controlWidth = _wideControlWidth;
     private double _controlZoneWidth = _wideZoneWidth;
 
@@ -41,7 +44,8 @@ public sealed partial class SettingsPage : Page, INotifyPropertyChanged
     public SettingsPage()
     {
         InitializeComponent();
-        AboutCard.Header = $"关于 {AppResources.DisplayName}";
+        AboutHeader.Text = AppInfo.AboutTitle;
+        AutomationProperties.SetName(AboutButton, AboutHeader.Text);
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
@@ -49,6 +53,35 @@ public sealed partial class SettingsPage : Page, INotifyPropertyChanged
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         HighContrast.Changed -= OnHighContrastChanged;
+    }
+
+    private async void OnAboutClicked(object sender, RoutedEventArgs e)
+    {
+        if (_aboutDialogOpen || XamlRoot is null)
+        {
+            return;
+        }
+
+        _aboutDialogOpen = true;
+        AboutStatus.Visibility = Visibility.Collapsed;
+        try
+        {
+            AboutDialog dialog = new() { XamlRoot = XamlRoot };
+            await dialog.ShowAsync();
+        }
+        catch (COMException)
+        {
+            AboutStatus.Text = "请先关闭当前对话框，再查看应用信息。";
+            AboutStatus.Visibility = Visibility.Visible;
+        }
+        finally
+        {
+            _aboutDialogOpen = false;
+            if (IsLoaded)
+            {
+                AboutButton.Focus(FocusState.Keyboard);
+            }
+        }
     }
 
     private AppearanceSettings? Appearance => (DataContext as DevicesViewModel)?.Appearance;

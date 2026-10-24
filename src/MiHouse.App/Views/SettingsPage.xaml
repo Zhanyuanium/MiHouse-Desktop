@@ -112,11 +112,21 @@
         </StackPanel>
         <StackPanel Spacing="10">
           <TextBlock Text="应用信息" Style="{ThemeResource BodyStrongTextBlockStyle}" Margin="4,0,0,2" />
-          <views:SettingsCard x:Name="AboutCard" Header="关于 MiHouse" Description="版本信息、许可与开源声明" Glyph="&#xE946;">
-            <views:SettingsCard.Trailing><Grid Style="{StaticResource SettingsControlZoneStyle}" Width="{x:Bind ControlZoneWidth, Mode=OneWay}">
-              <TextBlock Style="{StaticResource PlannedTag}" HorizontalAlignment="Right" Margin="{StaticResource SettingsControlGutter}" />
-            </Grid></views:SettingsCard.Trailing>
-          </views:SettingsCard>
+          <Button x:Name="AboutButton" Click="OnAboutClicked" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="{ThemeResource ControlCornerRadius}"
+            Padding="16" BorderThickness="0" AutomationProperties.Name="关于 MiHouse">
+            <Grid ColumnSpacing="16" MinHeight="40">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="24" /><ColumnDefinition Width="*" MinWidth="0" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+              <FontIcon Glyph="&#xE946;" FontSize="20" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+              <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                <TextBlock x:Name="AboutHeader" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <TextBlock Text="版本信息、许可与开源声明" FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+              </StackPanel>
+              <FontIcon Grid.Column="2" Glyph="&#xE76C;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+            </Grid>
+          </Button>
+          <TextBlock x:Name="AboutStatus" Visibility="Collapsed" TextWrapping="Wrap" Margin="16,0"
+            FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" AutomationProperties.LiveSetting="Polite" />
         </StackPanel>
       </StackPanel>
     </views:PageLayout.Body>

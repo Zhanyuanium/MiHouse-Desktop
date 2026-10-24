@@ -1,0 +1,40 @@
+<ContentDialog x:Class="MiHouse.App.Views.AboutDialog"
+  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  CornerRadius="8" CloseButtonText="关闭" DefaultButton="Close" Opened="OnOpened" Closed="OnClosed">
+  <ScrollViewer x:Name="ContentScroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+    HorizontalScrollMode="Disabled" IsTabStop="True">
+    <StackPanel Spacing="20">
+      <Grid ColumnSpacing="16">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="56" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+        <Grid Width="56" Height="56" VerticalAlignment="Top">
+          <FontIcon x:Name="FallbackIcon" Glyph="&#xE80F;" FontSize="32" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+          <Image x:Name="AppIcon" Source="ms-appx:///Assets/Square44x44Logo.png" Stretch="Uniform"
+            ImageOpened="OnIconOpened" ImageFailed="OnIconFailed" AutomationProperties.AccessibilityView="Raw" />
+        </Grid>
+        <StackPanel Grid.Column="1" Spacing="6">
+          <TextBlock x:Name="AppName" Style="{ThemeResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
+          <TextBlock x:Name="AppDescription" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
+      </Grid>
+      <Grid ColumnSpacing="32" RowSpacing="12">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <TextBlock Text="版本" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        <TextBlock x:Name="VersionText" Grid.Column="1" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+        <TextBlock Grid.Row="1" Text="发行者" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        <TextBlock x:Name="PublisherText" Grid.Row="1" Grid.Column="1" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+        <TextBlock Grid.Row="2" Text="许可" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        <TextBlock x:Name="LicenseText" Grid.Row="2" Grid.Column="1" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+      </Grid>
+      <StackPanel Spacing="8">
+        <TextBlock x:Name="LinksText" TextWrapping="Wrap">
+          <Hyperlink x:Name="LicenseLink" Click="OnLicenseClicked" AutomationProperties.Name="阅读完整的开源许可">阅读完整许可</Hyperlink><Run x:Name="LicenseSeparator" Text=" · " /><Hyperlink x:Name="NoticesLink" Click="OnNoticesClicked" AutomationProperties.Name="阅读第三方开源声明">第三方声明</Hyperlink><Run x:Name="NoticesSeparator" Text=" · " /><Hyperlink Click="OnRepositoryClicked" AutomationProperties.Name="在浏览器中查看源代码">源代码</Hyperlink>
+        </TextBlock>
+        <TextBlock x:Name="LaunchStatus" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+          Visibility="Collapsed" AutomationProperties.LiveSetting="Polite" />
+      </StackPanel>
+      <TextBlock x:Name="CopyrightText" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+    </StackPanel>
+  </ScrollViewer>
+</ContentDialog>

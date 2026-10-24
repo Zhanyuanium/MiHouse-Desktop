@@ -61,7 +61,13 @@
   <data name="AppDisplayName" xml:space="preserve">
     <value>MiHouse</value>
   </data>
+  <data name="AppDisplayNameBilingual" xml:space="preserve">
+    <value>MiHouse</value>
+  </data>
+  <data name="AboutTitle" xml:space="preserve">
+    <value>About MiHouse</value>
+  </data>
   <data name="AppDescription" xml:space="preserve">
-    <value>Xiaomi Mi Home desktop client</value>
+    <value>Unofficial Xiaomi Mi Home desktop client</value>
   </data>
 </root>

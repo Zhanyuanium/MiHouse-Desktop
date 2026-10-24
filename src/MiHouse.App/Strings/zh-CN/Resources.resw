@@ -61,7 +61,13 @@
   <data name="AppDisplayName" xml:space="preserve">
     <value>米耗子</value>
   </data>
+  <data name="AppDisplayNameBilingual" xml:space="preserve">
+    <value>米耗子 MiHouse</value>
+  </data>
+  <data name="AboutTitle" xml:space="preserve">
+    <value>关于米耗子</value>
+  </data>
   <data name="AppDescription" xml:space="preserve">
-    <value>米家 Windows 客户端</value>
+    <value>非官方的小米米家 Windows 客户端</value>
   </data>
 </root>
